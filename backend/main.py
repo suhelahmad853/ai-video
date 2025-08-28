@@ -7,6 +7,7 @@ import asyncio
 from typing import Dict, Any
 from video_processor import video_processor
 from audio_processor import audio_processor
+from content_rewriter import content_rewriter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,10 +70,15 @@ async def root():
                 "analyze_content_structure": "POST /analyze-content-structure",
                 "transcribe_and_analyze": "POST /transcribe-and-analyze"
             },
+            "content_rewriting": {
+                "rewrite_content": "POST /rewrite-content",
+                "analyze_content_similarity": "POST /analyze-content-similarity",
+                "check_plagiarism": "POST /check-plagiarism"
+            },
             "status": "GET /process-status/{task_id}"
         },
-        "current_task": "Task 1.3.2: Content Structure Analysis",
-        "next_step": "AI Content Transformation"
+        "current_task": "Task 2.1.1: Text Analysis and Modification",
+        "next_step": "AI Content Generation"
     }
 
 @app.get("/test-cors")
@@ -439,7 +445,7 @@ async def analyze_content_structure(transcription_data: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=f"Content analysis error: {str(e)}")
 
 @app.post("/transcribe-and-analyze")
-async def transcribe_andAnalyze(audio_data: Dict[str, Any]):
+async def transcribeAndAnalyze(audio_data: Dict[str, Any]):
     """Transcribe audio and analyze content structure in one operation"""
     try:
         audio_path = audio_data.get("audio_path")
@@ -475,6 +481,125 @@ async def transcribe_andAnalyze(audio_data: Dict[str, Any]):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription and analysis error: {str(e)}")
+
+@app.post("/rewrite-content")
+async def rewrite_content(content_data: Dict[str, Any]):
+    """Rewrite content using AI-powered text analysis and modification (Task 2.1.1)"""
+    try:
+        original_text = content_data.get("text")
+        target_style = content_data.get("target_style", "professional")
+        target_tone = content_data.get("target_tone", "neutral")
+        complexity_level = content_data.get("complexity_level", "medium")
+        preserve_key_points = content_data.get("preserve_key_points", True)
+        max_similarity = content_data.get("max_similarity", 0.3)
+        
+        if not original_text:
+            raise HTTPException(status_code=400, detail="Text content is required")
+        
+        # Create rewriting options
+        from content_rewriter import RewritingOptions
+        options = RewritingOptions(
+            target_style=target_style,
+            target_tone=target_tone,
+            complexity_level=complexity_level,
+            preserve_key_points=preserve_key_points,
+            max_similarity=max_similarity
+        )
+        
+        # Perform content rewriting
+        analysis_result = await content_rewriter.analyze_and_rewrite_content(original_text, options)
+        
+        return {
+            "status": "content_rewriting_completed",
+            "message": "Content rewritten successfully using AI analysis",
+            "analysis": {
+                "original_text": analysis_result.original_text,
+                "modified_text": analysis_result.modified_text,
+                "similarity_score": analysis_result.similarity_score,
+                "originality_score": analysis_result.originality_score,
+                "changes_made": analysis_result.changes_made,
+                "readability_score": analysis_result.readability_score,
+                "word_count": analysis_result.word_count,
+                "processing_time": analysis_result.processing_time
+            },
+            "next_step": "ai_content_generation"
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Content rewriting error: {str(e)}")
+
+@app.post("/analyze-content-similarity")
+async def analyze_content_similarity(content_data: Dict[str, Any]):
+    """Analyze content similarity between two texts"""
+    try:
+        text1 = content_data.get("text1")
+        text2 = content_data.get("text2")
+        
+        if not text1 or not text2:
+            raise HTTPException(status_code=400, detail="Both text1 and text2 are required")
+        
+        # Calculate similarity using the content rewriter
+        similarity_score = content_rewriter._calculate_similarity(text1, text2)
+        originality_score = 1.0 - similarity_score
+        
+        return {
+            "status": "similarity_analysis_completed",
+            "similarity_score": similarity_score,
+            "originality_score": originality_score,
+            "analysis": {
+                "text1_length": len(text1.split()),
+                "text2_length": len(text2.split()),
+                "text1_unique_words": len(set(text1.lower().split())),
+                "text2_unique_words": len(set(text2.lower().split())),
+                "recommendation": "High originality" if originality_score > 0.7 else "Moderate originality" if originality_score > 0.4 else "Low originality"
+            }
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Similarity analysis error: {str(e)}")
+
+@app.post("/check-plagiarism")
+async def check_plagiarism(content_data: Dict[str, Any]):
+    """Check content for potential plagiarism (Task 2.1.1)"""
+    try:
+        text = content_data.get("text")
+        reference_texts = content_data.get("reference_texts", [])
+        threshold = content_data.get("threshold", 0.7)
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Text content is required")
+        
+        plagiarism_results = []
+        
+        for i, ref_text in enumerate(reference_texts):
+            similarity = content_rewriter._calculate_similarity(text, ref_text)
+            is_plagiarized = similarity > threshold
+            
+            plagiarism_results.append({
+                "reference_index": i,
+                "similarity_score": similarity,
+                "is_plagiarized": is_plagiarized,
+                "risk_level": "High" if similarity > 0.8 else "Medium" if similarity > 0.6 else "Low"
+            })
+        
+        # Overall plagiarism assessment
+        max_similarity = max([result["similarity_score"] for result in plagiarism_results]) if plagiarism_results else 0
+        overall_risk = "High" if max_similarity > 0.8 else "Medium" if max_similarity > 0.6 else "Low"
+        
+        return {
+            "status": "plagiarism_check_completed",
+            "overall_risk": overall_risk,
+            "max_similarity": max_similarity,
+            "reference_analyses": plagiarism_results,
+            "recommendations": [
+                "Consider rewriting sections with high similarity" if max_similarity > 0.8 else "",
+                "Review content for originality" if max_similarity > 0.6 else "",
+                "Content appears original" if max_similarity < 0.4 else ""
+            ]
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Plagiarism check error: {str(e)}")
 
 @app.get("/process-status/{task_id}")
 async def get_process_status(task_id: str):

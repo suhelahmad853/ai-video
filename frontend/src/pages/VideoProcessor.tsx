@@ -37,11 +37,11 @@ const VideoProcessor: React.FC = () => {
 
       setResult(response.data);
 
-      // Step 2: Analyze content for AI transformation
-      const analysisResponse = await axios.post(`${API_BASE_URL}/analyze-content`, {
+        // Step 2: Analyze content for AI transformation
+        const analysisResponse = await axios.post(`${API_BASE_URL}/analyze-content`, {
         url: url,
-        quality: quality
-      });
+          quality: quality
+        });
 
       setResult((prev: any) => ({ ...prev, analysis: analysisResponse.data }));
 
@@ -456,7 +456,7 @@ const VideoProcessor: React.FC = () => {
                   <strong>Title:</strong> {restrictions.title}
                 </div>
               )}
-            </div>
+                </div>
           )}
 
           {transcription && (
@@ -481,7 +481,7 @@ const VideoProcessor: React.FC = () => {
                 <strong>Confidence Score:</strong> {(transcription.confidence_score * 100).toFixed(1)}%
                 <br />
                 <strong>Processing Time:</strong> {transcription.processing_time_seconds}s
-              </div>
+                </div>
               
               <div style={{ marginTop: '1rem' }}>
                 <strong>Transcribed Text:</strong>
@@ -524,7 +524,7 @@ const VideoProcessor: React.FC = () => {
               
               <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#d4edda', borderRadius: '4px' }}>
                 <strong>Next Step:</strong> {transcription.next_step || 'Content structure analysis'}
-              </div>
+                </div>
             </div>
           )}
 
@@ -598,7 +598,7 @@ const VideoProcessor: React.FC = () => {
                     </div>
                   ))}
                 </div>
-              </div>
+                </div>
             )}
 
             {analysisResult?.key_points && analysisResult.key_points.length > 0 && (
@@ -612,11 +612,11 @@ const VideoProcessor: React.FC = () => {
                         <span className="point-type">{point.type}</span>
                         <span className="point-importance">Importance: {point.importance_score}/10</span>
                         <span className="point-category">{point.category}</span>
-                      </div>
-                    </div>
+                </div>
+                </div>
                   ))}
                 </div>
-              </div>
+                </div>
             )}
 
             {analysisResult?.insights && (
@@ -625,7 +625,7 @@ const VideoProcessor: React.FC = () => {
                 <div className="insights-grid">
                   <div className="insight-item">
                     <strong>Content Flow:</strong> {analysisResult.insights.content_flow}
-                  </div>
+                </div>
                   <div className="insight-item">
                     <strong>Engagement Factors:</strong> {analysisResult.insights.engagement_factors?.join(', ')}
                   </div>
@@ -634,18 +634,18 @@ const VideoProcessor: React.FC = () => {
                       <strong>Difficulty:</strong> {analysisResult.insights.difficulty_distribution.easy_percentage}% Easy, 
                       {analysisResult.insights.difficulty_distribution.medium_percentage}% Medium, 
                       {analysisResult.insights.difficulty_distribution.hard_percentage}% Hard
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
             {contentAnalysis.saved_path && (
               <div className="analysis-export">
                 <p><strong>Analysis saved to:</strong> {contentAnalysis.saved_path}</p>
               </div>
             )}
-          </div>
+        </div>
         )}
       </div>
     </div>
