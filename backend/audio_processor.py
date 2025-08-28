@@ -10,6 +10,7 @@ from typing import Dict, Optional, List
 from pathlib import Path
 import json
 import tempfile
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -713,6 +714,554 @@ class AudioProcessor:
                 'error': str(e),
                 'message': 'Error checking transcription status'
             }
+
+    async def analyze_content_structure(self, transcription_data: Dict) -> Dict:
+        """
+        Analyze content structure from transcription (Task 1.3.2)
+        
+        Args:
+            transcription_data (Dict): Transcription results from speech-to-text
+            
+        Returns:
+            Dict: Content structure analysis with topics, sections, and insights
+        """
+        try:
+            logger.info("Starting content structure analysis")
+            
+            # Extract text content
+            text = transcription_data.get('text', '')
+            if not text:
+                return {
+                    'success': False,
+                    'error': 'No transcription text available for analysis'
+                }
+            
+            # Perform content structure analysis
+            structure_result = await self._perform_content_analysis(text)
+            
+            # Save analysis results
+            saved_path = await self._save_content_analysis(transcription_data, structure_result)
+            
+            return {
+                'success': True,
+                'transcription_id': transcription_data.get('model_used', 'unknown'),
+                'content_structure': structure_result,
+                'saved_path': str(saved_path) if saved_path else None,
+                'message': 'Content structure analysis completed successfully',
+                'next_step': 'ai_content_transformation'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in content structure analysis: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': f'Content structure analysis failed: {str(e)}'
+            }
+
+    async def _perform_content_analysis(self, text: str) -> Dict:
+        """
+        Perform comprehensive content structure analysis
+        """
+        try:
+            # Clean and prepare text
+            cleaned_text = self._clean_text_for_analysis(text)
+            
+            # Analyze content structure
+            analysis_result = {
+                'overview': self._generate_content_overview(cleaned_text),
+                'topics': self._extract_main_topics(cleaned_text),
+                'sections': self._identify_content_sections(cleaned_text),
+                'key_points': self._extract_key_points(cleaned_text),
+                'insights': self._generate_content_insights(cleaned_text),
+                'metadata': self._extract_content_metadata(cleaned_text)
+            }
+            
+            return analysis_result
+            
+        except Exception as e:
+            logger.error(f"Error in content analysis: {e}")
+            return {'error': str(e)}
+
+    def _clean_text_for_analysis(self, text: str) -> str:
+        """Clean and prepare text for analysis"""
+        # Remove extra whitespace and normalize
+        cleaned = ' '.join(text.split())
+        
+        # Basic punctuation normalization
+        cleaned = cleaned.replace(' ,', ',').replace(' .', '.').replace(' !', '!').replace(' ?', '?')
+        
+        return cleaned
+
+    def _generate_content_overview(self, text: str) -> Dict:
+        """Generate high-level content overview"""
+        words = text.split()
+        sentences = text.split('.')
+        
+        return {
+            'total_words': len(words),
+            'total_sentences': len([s for s in sentences if s.strip()]),
+            'estimated_duration_minutes': round(len(words) / 150, 2),  # 150 words per minute
+            'content_type': self._classify_content_type(text),
+            'complexity_level': self._assess_complexity_level(text),
+            'primary_language': 'en'
+        }
+
+    def _classify_content_type(self, text: str) -> str:
+        """Classify the type of content"""
+        text_lower = text.lower()
+        
+        # Define content type keywords
+        content_types = {
+            'educational': ['learn', 'teach', 'understand', 'explain', 'guide', 'tutorial', 'course'],
+            'technical': ['code', 'algorithm', 'data structure', 'programming', 'software', 'development'],
+            'interview': ['interview', 'question', 'problem', 'solution', 'coding', 'leetcode'],
+            'motivational': ['motivation', 'success', 'achieve', 'goal', 'dream', 'inspire'],
+            'story': ['story', 'experience', 'journey', 'happened', 'remember', 'when'],
+            'review': ['review', 'compare', 'analysis', 'evaluate', 'assess', 'opinion']
+        }
+        
+        # Count matches for each type
+        type_scores = {}
+        for content_type, keywords in content_types.items():
+            score = sum(1 for keyword in keywords if keyword in text_lower)
+            type_scores[content_type] = score
+        
+        # Return the type with highest score
+        if type_scores:
+            return max(type_scores, key=type_scores.get)
+        return 'general'
+
+    def _assess_complexity_level(self, text: str) -> str:
+        """Assess the complexity level of the content"""
+        words = text.split()
+        avg_word_length = sum(len(word) for word in words) / len(words) if words else 0
+        
+        # Count technical/complex words
+        technical_indicators = ['algorithm', 'complexity', 'optimization', 'implementation', 'architecture']
+        technical_count = sum(1 for word in words if word.lower() in technical_indicators)
+        
+        if technical_count > 10 or avg_word_length > 6:
+            return 'advanced'
+        elif technical_count > 5 or avg_word_length > 5:
+            return 'intermediate'
+        else:
+            return 'beginner'
+
+    def _extract_main_topics(self, text: str) -> List[Dict]:
+        """Extract main topics and themes from content"""
+        # Define topic extraction patterns
+        topic_patterns = [
+            r'(?:the|a|an)\s+(\w+(?:\s+\w+){1,3})\s+(?:is|are|was|were|will be)',
+            r'(?:let\'s|let us)\s+(\w+(?:\s+\w+){1,3})',
+            r'(?:we\'ll|we will)\s+(\w+(?:\s+\w+){1,3})',
+            r'(?:focus on|concentrate on|learn about)\s+(\w+(?:\s+\w+){1,3})'
+        ]
+        
+        import re
+        topics = []
+        text_lower = text.lower()
+        
+        # Extract topics based on patterns
+        for pattern in topic_patterns:
+            matches = re.findall(pattern, text_lower)
+            for match in matches:
+                if len(match.split()) >= 2:  # At least 2 words
+                    topics.append({
+                        'topic': match.title(),
+                        'frequency': text_lower.count(match),
+                        'relevance_score': self._calculate_topic_relevance(match, text)
+                    })
+        
+        # Remove duplicates and sort by relevance
+        unique_topics = []
+        seen = set()
+        for topic in topics:
+            if topic['topic'] not in seen:
+                seen.add(topic['topic'])
+                unique_topics.append(topic)
+        
+        # Sort by relevance score and return top topics
+        unique_topics.sort(key=lambda x: x['relevance_score'], reverse=True)
+        return unique_topics[:10]  # Return top 10 topics
+
+    def _calculate_topic_relevance(self, topic: str, text: str) -> float:
+        """Calculate relevance score for a topic"""
+        text_lower = text.lower()
+        topic_lower = topic.lower()
+        
+        # Count occurrences
+        occurrence_count = text_lower.count(topic_lower)
+        
+        # Calculate position weight (topics mentioned early are more important)
+        first_position = text_lower.find(topic_lower)
+        position_weight = 1.0 if first_position < len(text) * 0.3 else 0.7
+        
+        # Calculate length weight (longer topics are more specific)
+        length_weight = min(len(topic.split()) / 3, 1.0)
+        
+        # Calculate final relevance score
+        relevance = (occurrence_count * position_weight * length_weight)
+        return round(relevance, 2)
+
+    def _identify_content_sections(self, text: str) -> List[Dict]:
+        """Identify logical content sections"""
+        # Split text into paragraphs
+        paragraphs = [p.strip() for p in text.split('.') if p.strip()]
+        
+        sections = []
+        current_section = {
+            'title': 'Introduction',
+            'content': '',
+            'start_position': 0,
+            'word_count': 0,
+            'key_concepts': []
+        }
+        
+        section_keywords = [
+            'first', 'second', 'third', 'next', 'then', 'finally', 'conclusion',
+            'summary', 'overview', 'background', 'problem', 'solution', 'example'
+        ]
+        
+        for i, paragraph in enumerate(paragraphs):
+            paragraph_lower = paragraph.lower()
+            
+            # Check if this paragraph starts a new section
+            is_new_section = any(keyword in paragraph_lower[:50] for keyword in section_keywords)
+            
+            if is_new_section and current_section['content']:
+                # Save current section
+                current_section['word_count'] = len(current_section['content'].split())
+                current_section['key_concepts'] = self._extract_key_concepts(current_section['content'])
+                sections.append(current_section.copy())
+                
+                # Start new section
+                current_section = {
+                    'title': self._generate_section_title(paragraph),
+                    'content': paragraph,
+                    'start_position': i,
+                    'word_count': 0,
+                    'key_concepts': []
+                }
+            else:
+                # Add to current section
+                if current_section['content']:
+                    current_section['content'] += '. ' + paragraph
+                else:
+                    current_section['content'] = paragraph
+        
+        # Add final section
+        if current_section['content']:
+            current_section['word_count'] = len(current_section['content'].split())
+            current_section['key_concepts'] = self._extract_key_concepts(current_section['content'])
+            sections.append(current_section)
+        
+        return sections
+
+    def _generate_section_title(self, paragraph: str) -> str:
+        """Generate a title for a content section"""
+        # Extract first few meaningful words
+        words = paragraph.split()[:5]
+        title = ' '.join(words).title()
+        
+        # Clean up the title
+        title = title.replace('The ', '').replace('A ', '').replace('An ', '')
+        return title
+
+    def _extract_key_concepts(self, text: str) -> List[str]:
+        """Extract key concepts from text"""
+        # Simple concept extraction based on capitalization and technical terms
+        words = text.split()
+        concepts = []
+        
+        for word in words:
+            # Check for capitalized words (potential concepts)
+            if word[0].isupper() and len(word) > 3:
+                concepts.append(word)
+            # Check for technical terms
+            elif word.lower() in ['algorithm', 'data structure', 'leetcode', 'coding', 'interview']:
+                concepts.append(word.title())
+        
+        # Remove duplicates and return
+        return list(set(concepts))[:5]  # Return top 5 concepts
+
+    def _extract_key_points(self, text: str) -> List[Dict]:
+        """Extract key points and insights from content"""
+        # Define key point indicators
+        key_indicators = [
+            'important', 'key', 'crucial', 'essential', 'critical', 'main',
+            'primary', 'fundamental', 'core', 'central', 'vital', 'significant'
+        ]
+        
+        sentences = text.split('.')
+        key_points = []
+        
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            
+            # Check if sentence contains key indicators
+            if any(indicator in sentence_lower for indicator in key_indicators):
+                key_points.append({
+                    'point': sentence.strip(),
+                    'type': 'key_insight',
+                    'importance_score': self._calculate_importance_score(sentence),
+                    'category': self._categorize_key_point(sentence)
+                })
+        
+        # Sort by importance and return top points
+        key_points.sort(key=lambda x: x['importance_score'], reverse=True)
+        return key_points[:15]  # Return top 15 key points
+
+    def _calculate_importance_score(self, sentence: str) -> float:
+        """Calculate importance score for a key point"""
+        sentence_lower = sentence.lower()
+        
+        # Count importance indicators
+        importance_words = ['important', 'key', 'crucial', 'essential', 'critical']
+        importance_count = sum(1 for word in importance_words if word in sentence_lower)
+        
+        # Count action words
+        action_words = ['must', 'should', 'need to', 'have to', 'will', 'going to']
+        action_count = sum(1 for phrase in action_words if phrase in sentence_lower)
+        
+        # Calculate score
+        score = (importance_count * 2) + action_count
+        return min(score, 10)  # Cap at 10
+
+    def _categorize_key_point(self, sentence: str) -> str:
+        """Categorize a key point"""
+        sentence_lower = sentence.lower()
+        
+        categories = {
+            'action': ['must', 'should', 'need to', 'have to', 'will', 'going to'],
+            'definition': ['is', 'are', 'means', 'refers to', 'defined as'],
+            'benefit': ['benefit', 'advantage', 'help', 'improve', 'better'],
+            'warning': ['warning', 'caution', 'avoid', 'don\'t', 'never'],
+            'example': ['example', 'instance', 'case', 'scenario', 'situation']
+        }
+        
+        for category, keywords in categories.items():
+            if any(keyword in sentence_lower for keyword in keywords):
+                return category
+        
+        return 'general'
+
+    def _generate_content_insights(self, text: str) -> Dict:
+        """Generate insights about the content"""
+        words = text.split()
+        sentences = text.split('.')
+        
+        # Analyze content characteristics
+        insights = {
+            'content_flow': self._analyze_content_flow(sentences),
+            'engagement_factors': self._identify_engagement_factors(text),
+            'learning_objectives': self._extract_learning_objectives(text),
+            'practical_applications': self._identify_practical_applications(text),
+            'difficulty_distribution': self._analyze_difficulty_distribution(text)
+        }
+        
+        return insights
+
+    def _analyze_content_flow(self, sentences: List[str]) -> str:
+        """Analyze how content flows from beginning to end"""
+        if len(sentences) < 3:
+            return 'insufficient_content'
+        
+        # Check for logical progression indicators
+        progression_indicators = ['first', 'second', 'third', 'next', 'then', 'finally', 'conclusion']
+        
+        progression_count = 0
+        for sentence in sentences:
+            if any(indicator in sentence.lower() for indicator in progression_indicators):
+                progression_count += 1
+        
+        if progression_count >= 3:
+            return 'well_structured_progressive'
+        elif progression_count >= 1:
+            return 'moderately_structured'
+        else:
+            return 'free_form'
+
+    def _identify_engagement_factors(self, text: str) -> List[str]:
+        """Identify factors that make content engaging"""
+        engagement_factors = []
+        text_lower = text.lower()
+        
+        # Check for various engagement techniques
+        if 'story' in text_lower or 'experience' in text_lower:
+            engagement_factors.append('personal_story')
+        
+        if 'example' in text_lower or 'instance' in text_lower:
+            engagement_factors.append('practical_examples')
+        
+        if 'question' in text_lower or 'problem' in text_lower:
+            engagement_factors.append('problem_solving')
+        
+        if 'secret' in text_lower or 'hack' in text_lower or 'trick' in text_lower:
+            engagement_factors.append('insider_knowledge')
+        
+        if 'challenge' in text_lower or 'difficult' in text_lower:
+            engagement_factors.append('challenge_presentation')
+        
+        return engagement_factors
+
+    def _extract_learning_objectives(self, text: str) -> List[str]:
+        """Extract learning objectives from content"""
+        objectives = []
+        text_lower = text.lower()
+        
+        # Look for learning objective patterns
+        objective_patterns = [
+            'learn how to', 'understand how', 'master the', 'get good at',
+            'be able to', 'know how to', 'figure out how'
+        ]
+        
+        for pattern in objective_patterns:
+            if pattern in text_lower:
+                # Extract the objective
+                start_idx = text_lower.find(pattern)
+                end_idx = text.find('.', start_idx)
+                if end_idx == -1:
+                    end_idx = len(text)
+                
+                objective = text[start_idx:end_idx].strip()
+                objectives.append(objective)
+        
+        return objectives[:5]  # Return top 5 objectives
+
+    def _identify_practical_applications(self, text: str) -> List[str]:
+        """Identify practical applications mentioned in content"""
+        applications = []
+        text_lower = text.lower()
+        
+        # Look for practical application indicators
+        application_indicators = [
+            'use this', 'apply this', 'practice this', 'implement this',
+            'try this', 'do this', 'work on this'
+        ]
+        
+        for indicator in application_indicators:
+            if indicator in text_lower:
+                # Extract the application
+                start_idx = text_lower.find(indicator)
+                end_idx = text.find('.', start_idx)
+                if end_idx == -1:
+                    end_idx = len(text)
+                
+                application = text[start_idx:end_idx].strip()
+                applications.append(application)
+        
+        return applications[:5]  # Return top 5 applications
+
+    def _analyze_difficulty_distribution(self, text: str) -> Dict:
+        """Analyze how difficulty is distributed throughout content"""
+        sentences = text.split('.')
+        difficulty_scores = []
+        
+        # Define difficulty indicators
+        easy_indicators = ['simple', 'easy', 'basic', 'fundamental', 'start']
+        medium_indicators = ['moderate', 'medium', 'intermediate', 'challenge']
+        hard_indicators = ['difficult', 'complex', 'advanced', 'expert', 'master']
+        
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            
+            if any(indicator in sentence_lower for indicator in easy_indicators):
+                difficulty_scores.append(1)  # Easy
+            elif any(indicator in sentence_lower for indicator in medium_indicators):
+                difficulty_scores.append(2)  # Medium
+            elif any(indicator in sentence_lower for indicator in hard_indicators):
+                difficulty_scores.append(3)  # Hard
+            else:
+                difficulty_scores.append(2)  # Default to medium
+        
+        if difficulty_scores:
+            avg_difficulty = sum(difficulty_scores) / len(difficulty_scores)
+            difficulty_distribution = {
+                'easy_percentage': round((difficulty_scores.count(1) / len(difficulty_scores)) * 100, 1),
+                'medium_percentage': round((difficulty_scores.count(2) / len(difficulty_scores)) * 100, 1),
+                'hard_percentage': round((difficulty_scores.count(3) / len(difficulty_scores)) * 100, 1),
+                'average_difficulty': round(avg_difficulty, 1)
+            }
+        else:
+            difficulty_distribution = {
+                'easy_percentage': 0,
+                'medium_percentage': 100,
+                'hard_percentage': 0,
+                'average_difficulty': 2.0
+            }
+        
+        return difficulty_distribution
+
+    def _extract_content_metadata(self, text: str) -> Dict:
+        """Extract additional metadata about the content"""
+        return {
+            'analysis_timestamp': datetime.now().isoformat(),
+            'analysis_version': '1.0',
+            'processing_time_ms': 0,  # Will be calculated during actual processing
+            'confidence_score': 0.85,
+            'language_detected': 'en',
+            'content_quality_score': self._calculate_content_quality_score(text)
+        }
+
+    def _calculate_content_quality_score(self, text: str) -> float:
+        """Calculate overall content quality score"""
+        words = text.split()
+        sentences = text.split('.')
+        
+        # Calculate various quality metrics
+        avg_sentence_length = len(words) / len(sentences) if sentences else 0
+        
+        # Penalize very short or very long sentences
+        sentence_length_score = 1.0
+        if avg_sentence_length < 5:
+            sentence_length_score = 0.7
+        elif avg_sentence_length > 30:
+            sentence_length_score = 0.8
+        
+        # Check for variety in vocabulary
+        unique_words = len(set(words))
+        vocabulary_score = min(unique_words / len(words), 1.0) if words else 0
+        
+        # Calculate final quality score
+        quality_score = (sentence_length_score + vocabulary_score) / 2
+        return round(quality_score, 2)
+
+    async def _save_content_analysis(self, transcription_data: Dict, analysis_result: Dict) -> Optional[Path]:
+        """Save content analysis results to file"""
+        try:
+            # Create output directory if it doesn't exist
+            self.output_dir.mkdir(exist_ok=True)
+            
+            # Generate filename
+            timestamp = datetime.now().strftime("%H%M%S")
+            filename = f"content_analysis_{timestamp}.json"
+            output_path = self.output_dir / filename
+            
+            # Prepare data for saving
+            save_data = {
+                'transcription_info': {
+                    'model_used': transcription_data.get('model_used', 'unknown'),
+                    'word_count': transcription_data.get('word_count', 0),
+                    'language': transcription_data.get('language', 'en')
+                },
+                'analysis_results': analysis_result,
+                'metadata': {
+                    'created_at': datetime.now().isoformat(),
+                    'version': '1.0'
+                }
+            }
+            
+            # Save to JSON file
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(save_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Content analysis saved to: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error saving content analysis: {e}")
+            return None
 
 # Create a global instance
 audio_processor = AudioProcessor() 
