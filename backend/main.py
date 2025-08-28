@@ -49,19 +49,30 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "endpoints": {
-            "health": "/health",
-            "process_video": "/process-video",
-            "analyze_content": "/analyze-content",
-            "extract_metadata": "/extract-metadata",
-            "check_restrictions": "/check-restrictions",
-            "transcribe_speech": "/transcribe-speech",
-            "transcription_status": "/transcription-status/{audio_filename}",
-            "extract_and_transcribe": "/extract-and-transcribe",
-            "extract_audio": "/extract-audio",
-            "analyze_audio": "/analyze-audio",
-            "prepare_audio_for_ai": "/prepare-audio-for-ai",
-            "docs": "/docs"
-        }
+            "health": "GET /health",
+            "video_processing": {
+                "process_video": "POST /process-video",
+                "check_restrictions": "POST /check-restrictions",
+                "get_video_info": "POST /get-video-info"
+            },
+            "audio_processing": {
+                "extract_audio": "POST /extract-audio",
+                "analyze_audio": "POST /analyze-audio",
+                "prepare_for_ai": "POST /prepare-for-ai"
+            },
+            "transcription": {
+                "transcribe_speech": "POST /transcribe-speech",
+                "transcription_status": "GET /transcription-status/{audio_filename}",
+                "extract_and_transcribe": "POST /extract-and-transcribe"
+            },
+            "content_analysis": {
+                "analyze_content_structure": "POST /analyze-content-structure",
+                "transcribe_and_analyze": "POST /transcribe-and-analyze"
+            },
+            "status": "GET /process-status/{task_id}"
+        },
+        "current_task": "Task 1.3.2: Content Structure Analysis",
+        "next_step": "AI Content Transformation"
     }
 
 @app.get("/test-cors")
@@ -402,6 +413,68 @@ async def extract_audio_and_transcribe(video_data: Dict[str, Any]):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Extraction and transcription error: {str(e)}")
+
+@app.post("/analyze-content-structure")
+async def analyze_content_structure(transcription_data: Dict[str, Any]):
+    """Analyze content structure from transcription (Task 1.3.2)"""
+    try:
+        # Validate input
+        if not transcription_data.get('text'):
+            raise HTTPException(status_code=400, detail="Transcription text is required")
+        
+        # Perform content structure analysis
+        analysis_result = await audio_processor.analyze_content_structure(transcription_data)
+        
+        if analysis_result.get('success'):
+            return {
+                "status": "content_analysis_completed",
+                "message": "Content structure analysis completed successfully",
+                "analysis": analysis_result,
+                "next_step": "ai_content_transformation"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=analysis_result.get('error', 'Content analysis failed'))
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Content analysis error: {str(e)}")
+
+@app.post("/transcribe-and-analyze")
+async def transcribe_andAnalyze(audio_data: Dict[str, Any]):
+    """Transcribe audio and analyze content structure in one operation"""
+    try:
+        audio_path = audio_data.get("audio_path")
+        language = audio_data.get("language", "en")
+        model_size = audio_data.get("model_size", "base")
+        
+        if not audio_path:
+            raise HTTPException(status_code=400, detail="Audio path is required")
+        
+        # Step 1: Transcribe speech to text
+        transcription_result = await audio_processor.transcribe_speech_to_text(
+            audio_path, language, model_size
+        )
+        
+        if not transcription_result.get('success'):
+            raise HTTPException(status_code=500, detail=transcription_result.get('error', 'Transcription failed'))
+        
+        # Step 2: Analyze content structure
+        analysis_result = await audio_processor.analyze_content_structure(
+            transcription_result.get('transcription', {})
+        )
+        
+        if analysis_result.get('success'):
+            return {
+                "status": "transcription_and_analysis_completed",
+                "message": "Audio transcribed and content analyzed successfully",
+                "transcription": transcription_result,
+                "content_analysis": analysis_result,
+                "next_step": "ai_content_transformation"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=analysis_result.get('error', 'Content analysis failed'))
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription and analysis error: {str(e)}")
 
 @app.get("/process-status/{task_id}")
 async def get_process_status(task_id: str):

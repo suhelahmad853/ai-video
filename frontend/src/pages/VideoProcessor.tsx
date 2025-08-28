@@ -5,124 +5,109 @@ import axios from 'axios';
 const API_BASE_URL = 'http://localhost:8001';
 
 const VideoProcessor: React.FC = () => {
-  const [videoUrl, setVideoUrl] = useState('');
-  const [quality, setQuality] = useState('720p');
+  // State variables
+  const [url, setUrl] = useState("");
+  const [quality, setQuality] = useState("720p");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('');
-  const [videoInfo, setVideoInfo] = useState<any>(null);
-  const [metadata, setMetadata] = useState<any>(null);
-  const [metadataSavedPath, setMetadataSavedPath] = useState<string | null>(null);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [restrictions, setRestrictions] = useState<any>(null);
   const [canProcess, setCanProcess] = useState<boolean | null>(null);
   const [transcription, setTranscription] = useState<any>(null);
-  const [transcriptionStatus, setTranscriptionStatus] = useState<string>('');
+  const [transcriptionStatus, setTranscriptionStatus] = useState<string>("");
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [contentAnalysis, setContentAnalysis] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!videoUrl.trim()) return;
+    if (!url.trim()) return;
 
     setIsProcessing(true);
-    setProgress(0);
-    setStatus('Validating YouTube URL...');
-
+    setError(null);
 
     try {
       // Step 1: Validate and get video info
       const response = await axios.post(`${API_BASE_URL}/process-video`, {
-        url: videoUrl,
+        url: url,
         quality: quality
       });
 
-      if (response.data.status === 'validated') {
-        setVideoInfo(response.data.video_info);
-        setProgress(25);
-        setStatus('URL validated! Starting content analysis...');
+      setResult(response.data);
 
-        // Step 2: Analyze content for AI transformation
-        const analysisResponse = await axios.post(`${API_BASE_URL}/analyze-content`, {
-          url: videoUrl,
-          quality: quality
-        });
+      // Step 2: Analyze content for AI transformation
+      const analysisResponse = await axios.post(`${API_BASE_URL}/analyze-content`, {
+        url: url,
+        quality: quality
+      });
 
-        if (analysisResponse.data.status === 'analyzed') {
-          setProgress(100);
-          setStatus('Content analysis completed! Ready for audio processing.');
+      setResult((prev: any) => ({ ...prev, analysis: analysisResponse.data }));
 
-        } else {
-          throw new Error(analysisResponse.data.message || 'Analysis failed');
-        }
-      } else {
-        throw new Error(response.data.message || 'Validation failed');
-      }
     } catch (error: any) {
-      setStatus(`Error: ${error.response?.data?.detail || error.message}`);
-      
+      setError(error.response?.data?.detail || error.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleExtractMetadata = async () => {
-    if (!videoUrl.trim()) return;
+    if (!url.trim()) return;
+
     setIsProcessing(true);
-    setStatus('Extracting video metadata...');
+    setError(null);
+
     try {
-      const resp = await axios.post(`${API_BASE_URL}/extract-metadata`, {
-        url: videoUrl,
-        save: true,
+      const response = await axios.post(`${API_BASE_URL}/extract-metadata`, {
+        url: url,
+        quality: quality
       });
-      if (resp.data.status === 'metadata_extracted') {
-        setMetadata(resp.data.metadata);
-        setMetadataSavedPath(resp.data.saved ? resp.data.saved_path : null);
-        setStatus('Metadata extracted successfully.');
-      } else {
-        throw new Error(resp.data.message || 'Metadata extraction failed');
-      }
+
+      setResult((prev: any) => ({ ...prev, metadata: response.data }));
+
     } catch (error: any) {
-      setStatus(`Error: ${error.response?.data?.detail || error.message}`);
+      setError(error.response?.data?.detail || error.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const checkVideoRestrictions = async () => {
-    if (!videoUrl.trim()) return;
+    if (!url.trim()) return;
     setIsProcessing(true);
-    setStatus('Checking video restrictions...');
+    setError(null);
     try {
       const resp = await axios.post(`${API_BASE_URL}/check-restrictions`, {
-        url: videoUrl,
+        url: url,
       });
       if (resp.data.status === 'restrictions_checked') {
         setRestrictions(resp.data.restrictions);
         setCanProcess(resp.data.can_process);
         if (resp.data.can_process) {
-          setStatus('Video can be processed! No restrictions detected.');
+          setTranscriptionStatus('Video can be processed! No restrictions detected.');
         } else {
-          setStatus(`Video has restrictions: ${resp.data.restrictions.reason}`);
+          setTranscriptionStatus(`Video has restrictions: ${resp.data.restrictions.reason}`);
         }
       } else {
         throw new Error(resp.data.message || 'Restriction check failed');
       }
     } catch (error: any) {
-      setStatus(`Error: ${error.response?.data?.detail || error.message}`);
+      setError(error.response?.data?.detail || error.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const transcribeAudio = async () => {
-    if (!videoUrl.trim()) return;
+    if (!url.trim()) return;
     setIsTranscribing(true);
     setTranscriptionStatus('Starting transcription...');
     
     try {
       // First, we need to simulate having an audio file
       // In a real implementation, this would come from the video processing pipeline
-      const mockAudioPath = `temp/${videoUrl.split('v=')[1]}_audio.mp3`;
+      const mockAudioPath = `temp/${url.split('v=')[1]}_audio.mp3`;
       
       const resp = await axios.post(`${API_BASE_URL}/transcribe-speech`, {
         audio_path: mockAudioPath,
@@ -133,7 +118,7 @@ const VideoProcessor: React.FC = () => {
       if (resp.data.status === 'transcription_completed') {
         setTranscription(resp.data.transcription);
         setTranscriptionStatus('Transcription completed successfully!');
-        setStatus('Speech-to-text transcription completed. Ready for content structure analysis.');
+        setTranscriptionStatus('Speech-to-text transcription completed. Ready for content structure analysis.');
       } else {
         throw new Error(resp.data.message || 'Transcription failed');
       }
@@ -145,75 +130,105 @@ const VideoProcessor: React.FC = () => {
   };
 
   const performFullPipeline = async () => {
-    if (!videoUrl.trim()) return;
-    setIsProcessing(true);
-    setProgress(0);
-    setStatus('Starting full processing pipeline...');
-    
     try {
-      // Step 1: Check restrictions
-      setProgress(10);
-      setStatus('Checking video restrictions...');
-      const restrictionsResp = await axios.post(`${API_BASE_URL}/check-restrictions`, {
-        url: videoUrl,
-      });
+      setIsProcessing(true);
+      setError(null);
       
-      if (!restrictionsResp.data.can_process) {
-        throw new Error(`Video cannot be processed: ${restrictionsResp.data.restrictions.reason}`);
+      // Step 1: Check video restrictions
+      await checkVideoRestrictions();
+      
+      if (!canProcess) {
+        setIsProcessing(false);
+        return;
       }
       
       // Step 2: Process video
-      setProgress(25);
-      setStatus('Processing video...');
-      const processResp = await axios.post(`${API_BASE_URL}/process-video`, {
-        url: videoUrl,
+      const response = await axios.post(`${API_BASE_URL}/process-video`, {
+        url: url,
         quality: quality
       });
       
-      if (processResp.data.status === 'validated') {
-        setVideoInfo(processResp.data.video_info);
-        
-        // Step 3: Analyze content
-        setProgress(50);
-        setStatus('Analyzing content...');
-        const analysisResp = await axios.post(`${API_BASE_URL}/analyze-content`, {
-          url: videoUrl,
-          quality: quality
-        });
-        
-        if (analysisResp.data.status === 'analyzed') {
-          
-          // Step 4: Extract metadata
-          setProgress(75);
-          setStatus('Extracting metadata...');
-          const metadataResp = await axios.post(`${API_BASE_URL}/extract-metadata`, {
-            url: videoUrl,
-            save: true,
-          });
-          
-          if (metadataResp.data.status === 'metadata_extracted') {
-            setMetadata(metadataResp.data.metadata);
-            
-            // Step 5: Transcribe speech
-            setProgress(90);
-            setStatus('Transcribing speech to text...');
-            await transcribeAudio();
-            
-            setProgress(100);
-            setStatus('Full pipeline completed! Ready for AI transformation.');
-          } else {
-            throw new Error(metadataResp.data.message || 'Metadata extraction failed');
-          }
-        } else {
-          throw new Error(analysisResp.data.message || 'Content analysis failed');
-        }
-      } else {
-        throw new Error(processResp.data.message || 'Video processing failed');
+      setResult(response.data);
+      
+      // Step 3: Extract and transcribe audio
+      const transcribeResponse = await axios.post(`${API_BASE_URL}/extract-and-transcribe`, {
+        video_path: response.data.video_path,
+        quality: quality,
+        language: "en",
+        model_size: "base"
+      });
+      
+      setTranscription(transcribeResponse.data);
+      
+      // Step 4: Analyze content structure
+      if (transcribeResponse.data.transcription?.text) {
+        await analyzeContentStructure(transcribeResponse.data.transcription);
       }
-    } catch (error: any) {
-      setStatus(`Pipeline Error: ${error.response?.data?.detail || error.message}`);
-    } finally {
+      
       setIsProcessing(false);
+    } catch (error: any) {
+      setError(error.response?.data?.detail || error.message);
+      setIsProcessing(false);
+    }
+  };
+
+  const analyzeContentStructure = async (transcriptionData: any) => {
+    try {
+      setIsAnalyzing(true);
+      setError(null);
+      
+      console.log('Analyzing transcription data:', transcriptionData); // Debug log
+      
+      const response = await axios.post(`${API_BASE_URL}/analyze-content-structure`, {
+        text: transcriptionData.text || transcriptionData,
+        language: transcriptionData.language || "en",
+        model_size: transcriptionData.model_size || "base"
+      });
+      
+      console.log('Content analysis response:', response.data); // Debug log
+      
+      setContentAnalysis(response.data);
+      
+      // Fix: Handle the response structure correctly
+      if (response.data.analysis && response.data.analysis.content_structure) {
+        setAnalysisResult(response.data.analysis.content_structure);
+      } else if (response.data.content_structure) {
+        setAnalysisResult(response.data.content_structure);
+      } else {
+        console.error('Unexpected response structure:', response.data);
+        setError('Unexpected response structure from content analysis');
+      }
+      
+    } catch (error: any) {
+      console.error('Content analysis error:', error); // Debug log
+      setError(error.response?.data?.detail || error.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const transcribeAndAnalyze = async () => {
+    try {
+      setIsTranscribing(true);
+      setIsAnalyzing(true);
+      setError(null);
+      
+      const response = await axios.post(`${API_BASE_URL}/transcribe-and-analyze`, {
+        audio_path: "temp/ADXNcv6KbMQ_audio.mp3",
+        language: "en",
+        model_size: "base"
+      });
+      
+      setTranscription(response.data.transcription);
+      setContentAnalysis(response.data.content_analysis);
+      // Fix: Set the analysis result correctly
+      setAnalysisResult(response.data.content_analysis.content_structure);
+      
+    } catch (error: any) {
+      setError(error.response?.data?.detail || error.message);
+    } finally {
+      setIsTranscribing(false);
+      setIsAnalyzing(false);
     }
   };
 
@@ -238,8 +253,8 @@ const VideoProcessor: React.FC = () => {
                 id="videoUrl"
                 className="form-input"
                 placeholder="https://www.youtube.com/watch?v=..."
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
                 disabled={isProcessing}
                 required
               />
@@ -265,7 +280,7 @@ const VideoProcessor: React.FC = () => {
             <button
               type="submit"
               className="btn"
-              disabled={isProcessing || !videoUrl.trim()}
+              disabled={isProcessing || !url.trim()}
             >
               {isProcessing ? (
                 <>
@@ -273,14 +288,14 @@ const VideoProcessor: React.FC = () => {
                   Processing...
                 </>
               ) : (
-                'Analyze Content'
+                'Process Video'
               )}
             </button>
             <button
               type="button"
               className="btn btn-secondary"
               style={{ marginLeft: '0.5rem' }}
-              disabled={isProcessing || !videoUrl.trim()}
+              disabled={isProcessing || !url.trim()}
               onClick={handleExtractMetadata}
             >
               {isProcessing ? 'Please wait...' : 'Extract Metadata'}
@@ -289,7 +304,7 @@ const VideoProcessor: React.FC = () => {
               type="button"
               className="btn btn-secondary"
               style={{ marginLeft: '0.5rem' }}
-              disabled={isProcessing || !videoUrl.trim()}
+              disabled={isProcessing || !url.trim()}
               onClick={checkVideoRestrictions}
             >
               {isProcessing ? 'Please wait...' : 'Check Restrictions'}
@@ -298,157 +313,107 @@ const VideoProcessor: React.FC = () => {
               type="button"
               className="btn btn-primary"
               style={{ marginLeft: '0.5rem' }}
-              disabled={isProcessing || !videoUrl.trim()}
+              disabled={isProcessing || !url.trim()}
               onClick={performFullPipeline}
             >
               {isProcessing ? 'Processing...' : 'Run Full Pipeline'}
             </button>
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-info"
               style={{ marginLeft: '0.5rem' }}
-              disabled={isTranscribing || !videoUrl.trim()}
-              onClick={transcribeAudio}
+              disabled={isTranscribing || !transcription}
+              onClick={() => transcription && analyzeContentStructure(transcription)}
             >
-              {isTranscribing ? 'Transcribing...' : 'Transcribe Speech'}
+              {isAnalyzing ? 'Analyzing...' : 'Analyze Content Structure'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-success"
+              style={{ marginLeft: '0.5rem' }}
+              disabled={isTranscribing || isAnalyzing || !url.trim()}
+              onClick={transcribeAndAnalyze}
+            >
+              {(isTranscribing || isAnalyzing) ? 'Processing...' : 'Quick Transcribe & Analyze'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-warning"
+              style={{ marginLeft: '0.5rem' }}
+              disabled={isAnalyzing}
+              onClick={() => {
+                const testData = {
+                  text: "This is a test text for content analysis. It contains multiple sentences to analyze the structure and extract insights. This will help us debug the content overview display issue."
+                };
+                analyzeContentStructure(testData);
+              }}
+            >
+              {isAnalyzing ? 'Testing...' : 'Test Content Analysis'}
             </button>
           </form>
 
+          {/* Button Workflow Explanation */}
+          <div className="workflow-explanation" style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '0.5rem', border: '1px solid #dee2e6' }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', color: '#495057' }}>📋 Workflow Guide:</h4>
+            <div style={{ fontSize: '0.9rem', color: '#6c757d' }}>
+              <p><strong>1. Process Video:</strong> Basic video processing and validation</p>
+              <p><strong>2. Extract Metadata:</strong> Get video information and details</p>
+              <p><strong>3. Check Restrictions:</strong> Verify video can be processed</p>
+              <p><strong>4. Run Full Pipeline:</strong> Complete workflow: video → audio → transcription → analysis</p>
+              <p><strong>5. Analyze Content Structure:</strong> Analyze existing transcription (requires transcription first)</p>
+              <p><strong>6. Quick Transcribe & Analyze:</strong> Fast transcription + analysis using test audio file</p>
+              <p><strong>7. Test Content Analysis:</strong> Test content analysis with sample data (for debugging)</p>
+            </div>
+          </div>
+
+          {/* Progress Section */}
           {isProcessing && (
-            <div className="progress-section">
-              <div className="progress-bar">
-                <div 
-                  className="progress-fill" 
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <p className="progress-text">{status}</p>
+            <div className="status-message info">
+              <p>Processing video... Please wait.</p>
             </div>
           )}
 
-          {status && !isProcessing && (
-            <div className={`status-message ${progress === 100 ? 'success' : 'info'}`}>
-              {status}
-              {progress === 100 && videoInfo && (
-                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-                  <span style={{ color: '#28a745' }}>✅ Content analysis complete</span>
-                  <br />
-                  <span style={{ color: '#17a2b8' }}>🔄 Ready for audio processing phase</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {videoInfo && (
-            <div className="card" style={{ marginTop: '2rem' }}>
-              <h3>Video Information</h3>
+          {/* Results Section */}
+          {result && (
+            <div className="results-section">
+              <h2>Processing Results</h2>
               
-              {/* Data Quality Indicator */}
-              <div style={{ 
-                padding: '0.5rem', 
-                marginBottom: '1rem', 
-                borderRadius: '4px',
-                backgroundColor: videoInfo.real_data ? '#d4edda' : '#fff3cd',
-                border: `1px solid ${videoInfo.real_data ? '#c3e6cb' : '#ffeaa7'}`,
-                color: videoInfo.real_data ? '#155724' : '#856404'
-              }}>
-                <strong>📊 Data Quality:</strong> {
-                  videoInfo.real_data 
-                    ? 'Real data extracted from YouTube' 
-                    : 'Limited data (extraction issues)'
-                }
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <strong>Title:</strong> {videoInfo.title}
-                </div>
-                <div>
-                  <strong>Duration:</strong> {
-                    videoInfo.duration > 0 
-                      ? `${Math.round(videoInfo.duration / 60)} minutes` 
-                      : 'Unknown'
-                  }
-                </div>
-                <div>
-                  <strong>Uploader:</strong> {videoInfo.uploader}
-                </div>
-                <div>
-                  <strong>Views:</strong> {
-                    videoInfo.view_count > 0 
-                      ? videoInfo.view_count.toLocaleString() 
-                      : 'Unknown'
-                  }
-                </div>
-                <div>
-                  <strong>Likes:</strong> {
-                    videoInfo.like_count > 0 
-                      ? videoInfo.like_count.toLocaleString() 
-                      : 'Unknown'
-                  }
-                </div>
-                <div>
-                  <strong>Quality:</strong> {quality}
-                </div>
-                <div>
-                  <strong>Status:</strong> {videoInfo.status}
+              <div className="result-card">
+                <h3>Video Information</h3>
+                <div className="result-content">
+                  <p><strong>Status:</strong> {result.status}</p>
+                  {result.video_path && (
+                    <p><strong>Video Path:</strong> {result.video_path}</p>
+                  )}
+                  {result.message && (
+                    <p><strong>Message:</strong> {result.message}</p>
+                  )}
                 </div>
               </div>
-              
-              {videoInfo.description && (
-                <div style={{ marginTop: '1rem' }}>
-                  <strong>Description:</strong>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                    {videoInfo.description}
-                  </p>
-                </div>
-              )}
-              
-              {videoInfo.note && (
-                <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-                  <strong>Note:</strong> {videoInfo.note}
-                </div>
-              )}
-            </div>
-          )}
 
-          {metadata && (
-            <div className="card" style={{ marginTop: '1rem' }}>
-              <h3>Extracted Metadata</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <strong>Video ID:</strong> {metadata.video_id}
-                </div>
-                <div>
-                  <strong>Title:</strong> {metadata.title}
-                </div>
-                <div>
-                  <strong>Uploader:</strong> {metadata.uploader}
-                </div>
-                <div>
-                  <strong>Duration (s):</strong> {metadata.duration_seconds}
-                </div>
-                <div>
-                  <strong>Views:</strong> {metadata.view_count}
-                </div>
-                <div>
-                  <strong>Likes:</strong> {metadata.like_count}
-                </div>
-                <div>
-                  <strong>Subtitles:</strong> {metadata.has_subtitles ? 'Yes' : 'No'}
-                </div>
-                <div>
-                  <strong>Auto Captions:</strong> {metadata.has_automatic_captions ? 'Yes' : 'No'}
-                </div>
-                <div>
-                  <strong>Saved:</strong> {metadataSavedPath ? 'Yes' : 'No'}
-                </div>
-                {metadataSavedPath && (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <strong>Saved Path:</strong> {metadataSavedPath}
+              {result.analysis && (
+                <div className="result-card">
+                  <h3>Content Analysis</h3>
+                  <div className="result-content">
+                    <p><strong>Status:</strong> {result.analysis.status}</p>
+                    {result.analysis.message && (
+                      <p><strong>Message:</strong> {result.analysis.message}</p>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+
+              {result.metadata && (
+                <div className="result-card">
+                  <h3>Metadata</h3>
+                  <div className="result-content">
+                    <p><strong>Status:</strong> {result.metadata.status}</p>
+                    {result.metadata.message && (
+                      <p><strong>Message:</strong> {result.metadata.message}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -580,6 +545,108 @@ const VideoProcessor: React.FC = () => {
             </div>
           )}
         </div>
+        {/* Content Analysis Section */}
+        {contentAnalysis && (
+          <div className="content-analysis-section">
+            <h2>Content Structure Analysis</h2>
+            
+            {/* Debug Information */}
+            <div className="debug-info" style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#fff3cd', borderRadius: '0.25rem', fontSize: '0.8rem' }}>
+              <strong>Debug:</strong> 
+              contentAnalysis: {contentAnalysis ? '✅' : '❌'}, 
+              analysisResult: {analysisResult ? '✅' : '❌'}, 
+              overview: {analysisResult?.overview ? '✅' : '❌'}
+            </div>
+            
+            <div className="analysis-overview">
+              <h3>Content Overview</h3>
+              {analysisResult?.overview ? (
+                <div className="overview-grid">
+                  <div className="overview-item">
+                    <strong>Total Words:</strong> {analysisResult.overview.total_words}
+                  </div>
+                  <div className="overview-item">
+                    <strong>Total Sentences:</strong> {analysisResult.overview.total_sentences}
+                  </div>
+                  <div className="overview-item">
+                    <strong>Estimated Duration:</strong> {analysisResult.overview.estimated_duration_minutes} minutes
+                  </div>
+                  <div className="overview-item">
+                    <strong>Content Type:</strong> {analysisResult.overview.content_type}
+                  </div>
+                  <div className="overview-item">
+                    <strong>Complexity Level:</strong> {analysisResult.overview.complexity_level}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '1rem', backgroundColor: '#f8d7da', borderRadius: '0.25rem', color: '#721c24' }}>
+                  <strong>No overview data available.</strong> 
+                  <br />
+                  analysisResult: {JSON.stringify(analysisResult, null, 2)}
+                </div>
+              )}
+            </div>
+
+            {analysisResult?.topics && analysisResult.topics.length > 0 && (
+              <div className="analysis-topics">
+                <h3>Main Topics</h3>
+                <div className="topics-list">
+                  {analysisResult.topics.map((topic: any, index: number) => (
+                    <div key={index} className="topic-item">
+                      <span className="topic-name">{topic.topic}</span>
+                      <span className="topic-relevance">Relevance: {topic.relevance_score}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analysisResult?.key_points && analysisResult.key_points.length > 0 && (
+              <div className="analysis-key-points">
+                <h3>Key Points</h3>
+                <div className="key-points-list">
+                  {analysisResult.key_points.slice(0, 5).map((point: any, index: number) => (
+                    <div key={index} className="key-point-item">
+                      <div className="point-content">{point.point}</div>
+                      <div className="point-meta">
+                        <span className="point-type">{point.type}</span>
+                        <span className="point-importance">Importance: {point.importance_score}/10</span>
+                        <span className="point-category">{point.category}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analysisResult?.insights && (
+              <div className="analysis-insights">
+                <h3>Content Insights</h3>
+                <div className="insights-grid">
+                  <div className="insight-item">
+                    <strong>Content Flow:</strong> {analysisResult.insights.content_flow}
+                  </div>
+                  <div className="insight-item">
+                    <strong>Engagement Factors:</strong> {analysisResult.insights.engagement_factors?.join(', ')}
+                  </div>
+                  {analysisResult.insights.difficulty_distribution && (
+                    <div className="insight-item">
+                      <strong>Difficulty:</strong> {analysisResult.insights.difficulty_distribution.easy_percentage}% Easy, 
+                      {analysisResult.insights.difficulty_distribution.medium_percentage}% Medium, 
+                      {analysisResult.insights.difficulty_distribution.hard_percentage}% Hard
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {contentAnalysis.saved_path && (
+              <div className="analysis-export">
+                <p><strong>Analysis saved to:</strong> {contentAnalysis.saved_path}</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
