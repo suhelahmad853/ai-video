@@ -19,7 +19,34 @@ const VideoProcessor: React.FC = () => {
   const [contentAnalysis, setContentAnalysis] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('video/')) {
+        setUploadedFile(file);
+        console.log('File dropped:', file.name);
+      } else {
+        setError('Please drop a valid video file');
+      }
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -244,6 +271,60 @@ const VideoProcessor: React.FC = () => {
 
         <div className="video-input-section">
           <form onSubmit={handleSubmit} className="video-input-form">
+            {/* File Upload Section */}
+            <div className="upload-section">
+              <h3>Upload Video File (Optional)</h3>
+              <div 
+                className={`file-upload-area ${dragActive ? 'drag-active' : ''}`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+              >
+                <input
+                  type="file"
+                  id="videoFile"
+                  className="file-input"
+                  accept="video/*,.mp4,.avi,.mov,.mkv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setUploadedFile(file);
+                      console.log('File selected:', file.name);
+                    }
+                  }}
+                />
+                <label htmlFor="videoFile" className="file-upload-label">
+                  {uploadedFile ? (
+                    <>
+                      <div className="upload-icon">✅</div>
+                      <div className="upload-text">
+                        <strong>File Uploaded!</strong>
+                        <span>{uploadedFile.name}</span>
+                        <span className="file-size">{(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => setUploadedFile(null)}
+                        >
+                          Remove File
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="upload-icon">📁</div>
+                      <div className="upload-text">
+                        <strong>Choose a video file</strong>
+                        <span>or drag and drop here</span>
+                        <span className="file-types">MP4, AVI, MOV, MKV up to 500MB</span>
+                      </div>
+                    </>
+                  )}
+                </label>
+              </div>
+            </div>
+
             <div className="form-group">
               <label htmlFor="videoUrl" className="form-label">
                 YouTube Video URL
@@ -258,6 +339,7 @@ const VideoProcessor: React.FC = () => {
                 disabled={isProcessing}
                 required
               />
+              <small className="form-help">Enter a YouTube URL to process online videos</small>
             </div>
 
             <div className="form-group">
@@ -368,8 +450,42 @@ const VideoProcessor: React.FC = () => {
 
           {/* Progress Section */}
           {isProcessing && (
-            <div className="status-message info">
-              <p>Processing video... Please wait.</p>
+            <div className="progress-section">
+              <div className="progress-header">
+                <h3>Processing Video</h3>
+                <div className="progress-steps">
+                  <div className={`step ${result ? 'completed' : 'active'}`}>
+                    <span className="step-number">1</span>
+                    <span className="step-label">Video Processing</span>
+                  </div>
+                  <div className={`step ${transcription ? 'completed' : result ? 'active' : ''}`}>
+                    <span className="step-number">2</span>
+                    <span className="step-label">Audio Extraction</span>
+                  </div>
+                  <div className={`step ${contentAnalysis ? 'completed' : transcription ? 'active' : ''}`}>
+                    <span className="step-number">3</span>
+                    <span className="step-label">Content Analysis</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill" 
+                  style={{ 
+                    width: `${result && transcription && contentAnalysis ? 100 : 
+                           result && transcription ? 66 : 
+                           result ? 33 : 0}%` 
+                  }}
+                ></div>
+              </div>
+              
+              <div className="progress-status">
+                {!result && <p>🔄 Validating YouTube URL and processing video...</p>}
+                {result && !transcription && <p>🔄 Extracting audio and transcribing speech...</p>}
+                {transcription && !contentAnalysis && <p>🔄 Analyzing content structure...</p>}
+                {contentAnalysis && <p>✅ All processing completed successfully!</p>}
+              </div>
             </div>
           )}
 
