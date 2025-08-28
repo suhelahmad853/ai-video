@@ -1,0 +1,39 @@
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Video Processing
+opencv-python==4.8.1.78
+moviepy==1.0.3
+ffmpeg-python==0.2.0
+
+# Audio Processing
+openai-whisper==20231117
+pydub==0.25.1
+librosa==0.10.1
+
+# AI/ML Libraries
+# torch==2.1.0  # Commented out for now - version compatibility
+# torchaudio==2.1.0  # Commented out for now - version compatibility
+transformers==4.35.2
+numpy==1.24.3
+scipy==1.7.3  # Compatible with Python 3.8
+
+# Image Processing
+Pillow==10.1.0
+matplotlib==3.8.2
+
+# HTTP and API
+requests==2.31.0
+aiofiles==23.2.1
+python-multipart==0.0.6
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+loguru==0.7.2
+
+# Development
+pytest==7.4.3
+black==23.11.0
+flake8==6.1.0 
