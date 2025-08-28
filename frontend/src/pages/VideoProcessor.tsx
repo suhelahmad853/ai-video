@@ -521,11 +521,56 @@ const VideoProcessor: React.FC = () => {
 
               {result.metadata && (
                 <div className="result-card">
-                  <h3>Metadata</h3>
+                  <h3>Video Metadata</h3>
                   <div className="result-content">
                     <p><strong>Status:</strong> {result.metadata.status}</p>
                     {result.metadata.message && (
                       <p><strong>Message:</strong> {result.metadata.message}</p>
+                    )}
+                    
+                    {/* Display actual video metadata if available */}
+                    {result.metadata.metadata && (
+                      <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                        <h4>Video Details</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <p><strong>Title:</strong> {result.metadata.metadata.title || 'N/A'}</p>
+                          <p><strong>Uploader:</strong> {result.metadata.metadata.uploader || 'N/A'}</p>
+                          <p><strong>Duration:</strong> {result.metadata.metadata.duration_seconds ? `${Math.floor(result.metadata.metadata.duration_seconds / 60)}:${String(result.metadata.metadata.duration_seconds % 60).padStart(2, '0')}` : 'N/A'}</p>
+                          <p><strong>Views:</strong> {result.metadata.metadata.view_count ? result.metadata.metadata.view_count.toLocaleString() : 'N/A'}</p>
+                          <p><strong>Likes:</strong> {result.metadata.metadata.like_count ? result.metadata.metadata.like_count.toLocaleString() : 'N/A'}</p>
+                          <p><strong>Video ID:</strong> {result.metadata.metadata.video_id || 'N/A'}</p>
+                        </div>
+                        
+                        {result.metadata.metadata.description && (
+                          <div style={{ marginTop: '1rem' }}>
+                            <strong>Description:</strong>
+                            <div style={{ 
+                              marginTop: '0.5rem', 
+                              padding: '0.5rem', 
+                              backgroundColor: '#e9ecef', 
+                              borderRadius: '4px',
+                              fontSize: '0.9rem',
+                              maxHeight: '200px',
+                              overflowY: 'auto'
+                            }}>
+                              {result.metadata.metadata.description}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {result.metadata.metadata.thumbnail && (
+                          <div style={{ marginTop: '1rem' }}>
+                            <strong>Thumbnail:</strong>
+                            <div style={{ marginTop: '0.5rem' }}>
+                              <img 
+                                src={result.metadata.metadata.thumbnail} 
+                                alt="Video thumbnail" 
+                                style={{ maxWidth: '200px', borderRadius: '4px' }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
