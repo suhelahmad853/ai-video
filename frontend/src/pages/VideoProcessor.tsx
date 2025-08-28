@@ -15,6 +15,9 @@ const VideoProcessor: React.FC = () => {
   const [metadataSavedPath, setMetadataSavedPath] = useState<string | null>(null);
   const [restrictions, setRestrictions] = useState<any>(null);
   const [canProcess, setCanProcess] = useState<boolean | null>(null);
+  const [transcription, setTranscription] = useState<any>(null);
+  const [transcriptionStatus, setTranscriptionStatus] = useState<string>('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,6 +114,109 @@ const VideoProcessor: React.FC = () => {
     }
   };
 
+  const transcribeAudio = async () => {
+    if (!videoUrl.trim()) return;
+    setIsTranscribing(true);
+    setTranscriptionStatus('Starting transcription...');
+    
+    try {
+      // First, we need to simulate having an audio file
+      // In a real implementation, this would come from the video processing pipeline
+      const mockAudioPath = `temp/${videoUrl.split('v=')[1]}_audio.mp3`;
+      
+      const resp = await axios.post(`${API_BASE_URL}/transcribe-speech`, {
+        audio_path: mockAudioPath,
+        language: 'en',
+        model_size: 'base'
+      });
+      
+      if (resp.data.status === 'transcription_completed') {
+        setTranscription(resp.data.transcription);
+        setTranscriptionStatus('Transcription completed successfully!');
+        setStatus('Speech-to-text transcription completed. Ready for content structure analysis.');
+      } else {
+        throw new Error(resp.data.message || 'Transcription failed');
+      }
+    } catch (error: any) {
+      setTranscriptionStatus(`Error: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const performFullPipeline = async () => {
+    if (!videoUrl.trim()) return;
+    setIsProcessing(true);
+    setProgress(0);
+    setStatus('Starting full processing pipeline...');
+    
+    try {
+      // Step 1: Check restrictions
+      setProgress(10);
+      setStatus('Checking video restrictions...');
+      const restrictionsResp = await axios.post(`${API_BASE_URL}/check-restrictions`, {
+        url: videoUrl,
+      });
+      
+      if (!restrictionsResp.data.can_process) {
+        throw new Error(`Video cannot be processed: ${restrictionsResp.data.restrictions.reason}`);
+      }
+      
+      // Step 2: Process video
+      setProgress(25);
+      setStatus('Processing video...');
+      const processResp = await axios.post(`${API_BASE_URL}/process-video`, {
+        url: videoUrl,
+        quality: quality
+      });
+      
+      if (processResp.data.status === 'validated') {
+        setVideoInfo(processResp.data.video_info);
+        
+        // Step 3: Analyze content
+        setProgress(50);
+        setStatus('Analyzing content...');
+        const analysisResp = await axios.post(`${API_BASE_URL}/analyze-content`, {
+          url: videoUrl,
+          quality: quality
+        });
+        
+        if (analysisResp.data.status === 'analyzed') {
+          
+          // Step 4: Extract metadata
+          setProgress(75);
+          setStatus('Extracting metadata...');
+          const metadataResp = await axios.post(`${API_BASE_URL}/extract-metadata`, {
+            url: videoUrl,
+            save: true,
+          });
+          
+          if (metadataResp.data.status === 'metadata_extracted') {
+            setMetadata(metadataResp.data.metadata);
+            
+            // Step 5: Transcribe speech
+            setProgress(90);
+            setStatus('Transcribing speech to text...');
+            await transcribeAudio();
+            
+            setProgress(100);
+            setStatus('Full pipeline completed! Ready for AI transformation.');
+          } else {
+            throw new Error(metadataResp.data.message || 'Metadata extraction failed');
+          }
+        } else {
+          throw new Error(analysisResp.data.message || 'Content analysis failed');
+        }
+      } else {
+        throw new Error(processResp.data.message || 'Video processing failed');
+      }
+    } catch (error: any) {
+      setStatus(`Pipeline Error: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="container">
@@ -187,6 +293,24 @@ const VideoProcessor: React.FC = () => {
               onClick={checkVideoRestrictions}
             >
               {isProcessing ? 'Please wait...' : 'Check Restrictions'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginLeft: '0.5rem' }}
+              disabled={isProcessing || !videoUrl.trim()}
+              onClick={performFullPipeline}
+            >
+              {isProcessing ? 'Processing...' : 'Run Full Pipeline'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ marginLeft: '0.5rem' }}
+              disabled={isTranscribing || !videoUrl.trim()}
+              onClick={transcribeAudio}
+            >
+              {isTranscribing ? 'Transcribing...' : 'Transcribe Speech'}
             </button>
           </form>
 
@@ -367,6 +491,92 @@ const VideoProcessor: React.FC = () => {
                   <strong>Title:</strong> {restrictions.title}
                 </div>
               )}
+            </div>
+          )}
+
+          {transcription && (
+            <div className="card" style={{ marginTop: '1rem' }}>
+              <h3>Speech-to-Text Transcription</h3>
+              <div style={{ 
+                padding: '1rem', 
+                marginBottom: '1rem', 
+                borderRadius: '4px',
+                backgroundColor: '#d1ecf1',
+                border: '1px solid #bee5eb',
+                color: '#0c5460'
+              }}>
+                <strong>Status:</strong> ✅ Transcription Completed
+                <br />
+                <strong>Model Used:</strong> {transcription.model_used}
+                <br />
+                <strong>Language:</strong> {transcription.language}
+                <br />
+                <strong>Word Count:</strong> {transcription.word_count}
+                <br />
+                <strong>Confidence Score:</strong> {(transcription.confidence_score * 100).toFixed(1)}%
+                <br />
+                <strong>Processing Time:</strong> {transcription.processing_time_seconds}s
+              </div>
+              
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Transcribed Text:</strong>
+                <div style={{ 
+                  marginTop: '0.5rem', 
+                  padding: '1rem', 
+                  backgroundColor: '#f8f9fa', 
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  lineHeight: '1.5',
+                  maxHeight: '300px',
+                  overflowY: 'auto'
+                }}>
+                  {transcription.text}
+                </div>
+              </div>
+              
+              {transcription.segments && transcription.segments.length > 0 && (
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>Segments:</strong>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    {transcription.segments.map((segment: any, index: number) => (
+                      <div key={index} style={{ 
+                        marginBottom: '0.5rem', 
+                        padding: '0.5rem', 
+                        backgroundColor: '#e9ecef', 
+                        borderRadius: '4px',
+                        fontSize: '0.85rem'
+                      }}>
+                        <strong>Segment {index + 1}:</strong> {segment.start.toFixed(1)}s - {segment.end.toFixed(1)}s
+                        <br />
+                        <strong>Confidence:</strong> {(segment.confidence * 100).toFixed(1)}%
+                        <br />
+                        <strong>Text:</strong> {segment.text.substring(0, 100)}{segment.text.length > 100 ? '...' : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#d4edda', borderRadius: '4px' }}>
+                <strong>Next Step:</strong> {transcription.next_step || 'Content structure analysis'}
+              </div>
+            </div>
+          )}
+
+          {transcriptionStatus && !transcription && (
+            <div className="card" style={{ marginTop: '1rem' }}>
+              <h3>Transcription Status</h3>
+              <div style={{ 
+                padding: '1rem', 
+                borderRadius: '4px',
+                backgroundColor: isTranscribing ? '#fff3cd' : '#f8d7da',
+                border: `1px solid ${isTranscribing ? '#ffeaa7' : '#f5c6cb'}`,
+                color: isTranscribing ? '#856404' : '#721c24'
+              }}>
+                <strong>Status:</strong> {isTranscribing ? '🔄 Transcribing...' : '❌ Transcription Failed'}
+                <br />
+                <strong>Message:</strong> {transcriptionStatus}
+              </div>
             </div>
           )}
         </div>

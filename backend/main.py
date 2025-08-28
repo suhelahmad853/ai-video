@@ -51,6 +51,15 @@ async def root():
         "endpoints": {
             "health": "/health",
             "process_video": "/process-video",
+            "analyze_content": "/analyze-content",
+            "extract_metadata": "/extract-metadata",
+            "check_restrictions": "/check-restrictions",
+            "transcribe_speech": "/transcribe-speech",
+            "transcription_status": "/transcription-status/{audio_filename}",
+            "extract_and_transcribe": "/extract-and-transcribe",
+            "extract_audio": "/extract-audio",
+            "analyze_audio": "/analyze-audio",
+            "prepare_audio_for_ai": "/prepare-audio-for-ai",
             "docs": "/docs"
         }
     }
@@ -290,6 +299,109 @@ async def check_video_restrictions(video_data: Dict[str, Any]):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Restriction check error: {str(e)}")
+
+@app.post("/transcribe-speech")
+async def transcribe_speech_to_text(transcription_data: Dict[str, Any]):
+    """Transcribe speech from audio file to text (Task 1.3.1)"""
+    try:
+        audio_path = transcription_data.get("audio_path")
+        language = transcription_data.get("language", "en")
+        model_size = transcription_data.get("model_size", "base")
+        
+        if not audio_path:
+            raise HTTPException(status_code=400, detail="Audio path is required")
+        
+        # Validate model size
+        valid_models = ['tiny', 'base', 'small', 'medium', 'large']
+        if model_size not in valid_models:
+            raise HTTPException(status_code=400, detail=f"Invalid model size. Must be one of: {valid_models}")
+        
+        # Perform transcription
+        transcription_result = await audio_processor.transcribe_speech_to_text(
+            audio_path, language, model_size
+        )
+        
+        if transcription_result.get('success'):
+            return {
+                "status": "transcription_completed",
+                "message": transcription_result.get('message'),
+                "transcription": transcription_result.get('transcription'),
+                "saved_path": transcription_result.get('saved_path'),
+                "next_step": transcription_result.get('next_step')
+            }
+        else:
+            raise HTTPException(status_code=500, detail=transcription_result.get('error', 'Transcription failed'))
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
+
+@app.get("/transcription-status/{audio_filename}")
+async def get_transcription_status(audio_filename: str):
+    """Get the status of transcription for a specific audio file"""
+    try:
+        # Construct the full audio path
+        audio_path = f"temp/{audio_filename}"
+        
+        # Convert to absolute path if needed
+        if not os.path.isabs(audio_path):
+            # Go up one level from backend directory to project root
+            project_root = os.path.dirname(os.getcwd())
+            audio_path = os.path.join(project_root, audio_path)
+        
+        status = await audio_processor.get_transcription_status(audio_path)
+        return {
+            "status": "status_retrieved",
+            "audio_file": audio_filename,
+            "transcription_status": status
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Status retrieval error: {str(e)}")
+
+@app.post("/extract-and-transcribe")
+async def extract_audio_and_transcribe(video_data: Dict[str, Any]):
+    """Extract audio from video and transcribe to text in one operation"""
+    try:
+        video_path = video_data.get("video_path")
+        quality = video_data.get("quality", "medium")
+        language = video_data.get("language", "en")
+        model_size = video_data.get("model_size", "base")
+        
+        if not video_path:
+            raise HTTPException(status_code=400, detail="Video path is required")
+        
+        # Convert to absolute path if needed
+        if not os.path.isabs(video_path):
+            # Go up one level from backend directory to project root
+            project_root = os.path.dirname(os.getcwd())
+            video_path = os.path.join(project_root, video_path)
+        
+        # Step 1: Extract audio
+        extraction_result = await audio_processor.extract_audio_from_video(video_path, quality)
+        
+        if not extraction_result.get('success'):
+            raise HTTPException(status_code=500, detail=extraction_result.get('error', 'Audio extraction failed'))
+        
+        audio_path = extraction_result.get('audio_file')
+        
+        # Step 2: Transcribe audio
+        transcription_result = await audio_processor.transcribe_speech_to_text(
+            audio_path, language, model_size
+        )
+        
+        if transcription_result.get('success'):
+            return {
+                "status": "extraction_and_transcription_completed",
+                "message": "Audio extracted and transcribed successfully",
+                "audio_extraction": extraction_result,
+                "transcription": transcription_result,
+                "next_step": "content_structure_analysis"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=transcription_result.get('error', 'Transcription failed'))
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction and transcription error: {str(e)}")
 
 @app.get("/process-status/{task_id}")
 async def get_process_status(task_id: str):
