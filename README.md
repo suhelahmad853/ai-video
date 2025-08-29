@@ -85,7 +85,9 @@ ai-video-creator-tool/
 ├── temp/                    # Temporary files
 ├── output/                  # Processed output files
 ├── docker-compose.yml       # Docker services configuration
-├── start-services.sh        # Development startup script
+├── start-project.sh         # One-command project startup
+├── stop-project.sh          # Stop all project services
+├── start-services.sh        # Legacy development startup script
 ├── BRD_AI_Video_Creator_Tool.md    # Business Requirements Document
 ├── DEVELOPMENT_PLAN.md      # Detailed development roadmap
 ├── PROJECT_STATUS.md        # Current project status tracker
@@ -94,7 +96,25 @@ ai-video-creator-tool/
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: One-Command Startup (Recommended) 🎯
+```bash
+# Start the entire project
+./start-project.sh
+
+# Stop all services
+./stop-project.sh
+```
+
+**Benefits:**
+- ✅ **No manual setup** - everything is automated
+- ✅ **Auto-dependency installation** - creates venv and installs packages
+- ✅ **Service monitoring** - shows real-time status
+- ✅ **Error handling** - clear messages if something goes wrong
+
+See [QUICK_START.md](QUICK_START.md) for detailed instructions.
+
+### Option 2: Manual Setup
+#### Prerequisites
 - **Docker** and **Docker Compose**
 - **Node.js 16+** (for frontend development)
 - **Python 3.8+** (for backend development)
