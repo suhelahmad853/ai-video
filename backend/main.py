@@ -5,6 +5,7 @@ import uvicorn
 import os
 import logging
 import asyncio
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -14,6 +15,7 @@ from content_rewriter import ContentRewriter
 from voice_generator import VoiceGenerator
 from visual_generator import VisualGenerator
 from audio_processor import AudioProcessor
+from video_composer import VideoComposer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,10 +43,11 @@ content_rewriter = ContentRewriter()
 voice_generator = VoiceGenerator()
 visual_generator = VisualGenerator()
 audio_processor = AudioProcessor()
+video_composer = VideoComposer()
 
 # Global variables for tracking
 current_task = "Phase 2.3: Video Generation Engine"
-next_step = "Task 2.3.2: Video composition - Combining audio, visuals, and transitions"
+next_step = "Task 2.3.3: Output formatting and optimization"
 
 @app.get("/")
 async def root():
@@ -88,8 +91,8 @@ async def root():
             },
             "status": "GET /process-status/{task_id}"
         },
-        "current_task": "Task 2.3.1: Visual content creation",
-        "next_step": "Video Generation Engine"
+        "current_task": "Task 2.3.2: Video composition",
+        "next_step": "Task 2.3.3: Output formatting and optimization"
     }
 
 @app.get("/test-cors")
@@ -664,10 +667,33 @@ async def generate_speech(request: dict):
         voice_id = request.get('voice_id', 'default')
         custom_config = request.get('custom_config', {})
         
-        if not text:
+        # Validate text content
+        if not text or not text.strip():
             raise HTTPException(status_code=400, detail="Text content is required")
         
-        result = await voice_generator.generate_speech(text, voice_id, custom_config)
+        # Clean text content (remove timestamp artifacts)
+        cleaned_text = re.sub(r'00:\d{2}:\d{2}\.\.\s*', '', text).strip()
+        if not cleaned_text:
+            raise HTTPException(status_code=400, detail="Text content is empty after cleaning")
+        
+        # Use cleaned text for processing
+        text = cleaned_text
+        
+        # Prepare voice configuration
+        voice_config = voice_generator.get_voice_config(voice_id)
+        if not voice_config:
+            # Fallback to default voice if specified voice not found
+            voice_config = voice_generator.get_voice_config("default")
+            logger.warning(f"Voice ID '{voice_id}' not found, using default voice")
+        
+        # Ensure voice_config is not None
+        if not voice_config:
+            raise HTTPException(status_code=500, detail="No voice configuration available")
+        
+        if custom_config:
+            voice_config.update(custom_config)
+        
+        result = await voice_generator.generate_speech(text, voice_config)
         
         if result.get('success'):
             return {
@@ -1037,7 +1063,7 @@ async def get_visual_optimization_settings(target_format: str):
                 'audio_codec': 'aac'
             },
             'gif': {
-                'resolution': '1280x720',
+                'resolution': '1280x1080',
                 'frame_rate': 15,
                 'optimization': 'high',
                 'color_palette': '256'
@@ -1067,6 +1093,163 @@ async def get_visual_optimization_settings(target_format: str):
     except Exception as e:
         logger.error(f"Error retrieving optimization settings: {e}")
         raise HTTPException(status_code=500, detail=f"Optimization settings error: {str(e)}")
+
+# ===== PHASE 2.3: Video Composition =====
+
+@app.post("/compose-video")
+async def compose_video(request: dict):
+    """Compose final video from audio and visual content"""
+    try:
+        visuals = request.get('visuals', [])
+        audio_path = request.get('audio_path')
+        composition_config = request.get('composition_config', {})
+        
+        if not visuals:
+            raise HTTPException(status_code=400, detail="Visuals array is required")
+        if not audio_path:
+            raise HTTPException(status_code=400, detail="Audio path is required")
+        
+        # Validate composition configuration
+        is_valid, error_msg = video_composer.validate_composition_config(composition_config)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=f"Invalid composition config: {error_msg}")
+        
+        logger.info(f"Starting video composition for {len(visuals)} visuals with audio: {audio_path}")
+        
+        # Compose video
+        logger.info(f"Starting video composition with {len(visuals)} visuals and audio: {audio_path}")
+        result = await video_composer.compose_video(visuals, audio_path, composition_config)
+        
+        if result.get('success'):
+            return {
+                "status": "video_composed",
+                "message": f"Video successfully composed with {len(visuals)} visuals",
+                "result": result,
+                "next_step": "video_export"
+            }
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            logger.error(f"Video composition failed: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Video composition failed: {error_msg}")
+            
+    except Exception as e:
+        print(f"DEBUG: Video composition error: {e}")
+        print(f"DEBUG: Error type: {type(e)}")
+        print(f"DEBUG: Error details: {str(e)}")
+        import traceback
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        logger.error(f"Video composition error: {e}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error details: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Video composition error: {str(e)}")
+
+@app.post("/preview-timeline")
+async def preview_video_timeline(request: dict):
+    """Preview video timeline before composition"""
+    try:
+        visuals = request.get('visuals', [])
+        audio_path = request.get('audio_path')
+        composition_config = request.get('composition_config', {})
+        
+        if not visuals:
+            raise HTTPException(status_code=400, detail="Visuals array is required")
+        
+        # Create timeline preview
+        timeline = await video_composer._create_video_timeline(visuals, audio_path, composition_config)
+        preview = await video_composer.preview_timeline(timeline)
+        
+        return {
+            "status": "timeline_preview_generated",
+            "message": "Video timeline preview generated successfully",
+            "preview": preview,
+            "next_step": "video_composition"
+        }
+        
+    except Exception as e:
+        logger.error(f"Timeline preview error: {e}")
+        raise HTTPException(status_code=500, detail=f"Timeline preview error: {str(e)}")
+
+@app.get("/composition-presets")
+async def get_composition_presets():
+    """Get available video composition presets"""
+    try:
+        presets = video_composer.get_composition_presets()
+        
+        return {
+            "status": "presets_retrieved",
+            "message": f"Found {len(presets)} composition presets",
+            "presets": presets,
+            "next_step": "preset_selection"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving composition presets: {e}")
+        raise HTTPException(status_code=500, detail=f"Preset retrieval error: {str(e)}")
+
+@app.post("/validate-composition-config")
+async def validate_composition_config(request: dict):
+    """Validate video composition configuration"""
+    try:
+        config = request.get('composition_config', {})
+        
+        is_valid, message = video_composer.validate_composition_config(config)
+        
+        return {
+            "status": "config_validated",
+            "is_valid": is_valid,
+            "message": message,
+            "next_step": "video_composition" if is_valid else "config_correction"
+        }
+        
+    except Exception as e:
+        logger.error(f"Configuration validation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
+
+@app.get("/video-export-status/{composition_id}")
+async def get_video_export_status(composition_id: str):
+    """Get status of video export process"""
+    try:
+        # This would typically query a database for export status
+        # For now, return a placeholder response
+        return {
+            "status": "export_status_retrieved",
+            "composition_id": composition_id,
+            "export_status": "completed",
+            "message": "Video export completed successfully",
+            "next_step": "download_video"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving export status: {e}")
+        raise HTTPException(status_code=500, detail=f"Export status error: {str(e)}")
+
+@app.get("/download-video/{filename}")
+async def download_video(filename: str):
+    """Download composed video files"""
+    try:
+        video_path = os.path.join("output", "videos", filename)
+        if not os.path.exists(video_path):
+            raise HTTPException(status_code=404, detail="Video file not found")
+        
+        # Determine media type based on file extension
+        file_extension = filename.lower().split('.')[-1]
+        media_type_map = {
+            'mp4': 'video/mp4',
+            'avi': 'video/x-msvideo',
+            'mov': 'video/quicktime',
+            'gif': 'image/gif'
+        }
+        media_type = media_type_map.get(file_extension, 'video/mp4')
+        
+        return FileResponse(
+            video_path,
+            media_type=media_type,
+            filename=filename
+        )
+    except Exception as e:
+        logger.error(f"Error serving video file: {e}")
+        raise HTTPException(status_code=500, detail=f"Video file error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(

@@ -1,1 +1,58 @@
- 
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build: .
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./output:/app/output
+      - ./backend:/app/backend
+    environment:
+      - PYTHONPATH=/app
+      - OUTPUT_DIR=/app/output
+    command: python backend/main.py
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Service (Development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:8001
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Production Frontend (Optional)
+  frontend-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  output_data:
+
+networks:
+  default:
+    name: ai-video-creator 

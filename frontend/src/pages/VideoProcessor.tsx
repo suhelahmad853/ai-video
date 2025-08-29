@@ -81,6 +81,20 @@ const VideoProcessor: React.FC = () => {
     }
   });
 
+  // Video Composition State
+  const [isComposingVideo, setIsComposingVideo] = useState<boolean>(false);
+  const [compositionProgress, setCompositionProgress] = useState<string>('');
+  const [compositionResult, setCompositionResult] = useState<any>(null);
+  const [availableCompositionPresets, setAvailableCompositionPresets] = useState<any>(null);
+  const [compositionOptions, setCompositionOptions] = useState({
+    outputFormat: 'mp4',
+    resolution: '1920x1080',
+    frameRate: 30,
+    enableTransitions: true,
+    transitionDuration: 0.5,
+    enableEnhancement: true
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -576,10 +590,93 @@ const VideoProcessor: React.FC = () => {
     }
   };
 
+  const handleComposeVideo = async () => {
+    if (!visualResult?.result?.visuals || !speechResult?.speech_output?.audio_file_path) {
+      alert('Please generate both visual content and speech before composing video.');
+      return;
+    }
+
+    setIsComposingVideo(true);
+    setCompositionProgress('Initializing video composition...');
+    
+    try {
+      // Prepare composition configuration
+      const [width, height] = compositionOptions.resolution.split('x').map(Number);
+      const compositionConfig = {
+        output_format: compositionOptions.outputFormat,
+        resolution: [width, height],
+        frame_rate: compositionOptions.frameRate,
+        enable_transitions: compositionOptions.enableTransitions,
+        transition_duration: compositionOptions.transitionDuration,
+        enable_video_enhancement: compositionOptions.enableEnhancement
+      };
+
+      // Get audio file path
+      const audioPath = speechResult.speech_output.audio_file_path;
+      
+      // Compose video
+      const response = await axios.post(`${API_BASE_URL}/compose-video`, {
+        visuals: visualResult.result.visuals,
+        audio_path: audioPath,
+        composition_config: compositionConfig
+      });
+      
+      setCompositionResult(response.data);
+      setCompositionProgress('Video composition completed!');
+      
+    } catch (error: any) {
+      setCompositionProgress('Error: ' + (error.response?.data?.detail || error.message));
+      console.error('Video composition error:', error);
+    } finally {
+      setIsComposingVideo(false);
+    }
+  };
+
+  const loadAvailableCompositionPresets = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/composition-presets`);
+      setAvailableCompositionPresets(response.data);
+    } catch (error: any) {
+      console.error('Error loading composition presets:', error);
+    }
+  };
+
+  const previewVideoTimeline = async () => {
+    if (!visualResult?.result?.visuals) {
+      alert('Please generate visual content first before previewing timeline.');
+      return;
+    }
+
+    try {
+      const [width, height] = compositionOptions.resolution.split('x').map(Number);
+      const compositionConfig = {
+        output_format: compositionOptions.outputFormat,
+        resolution: [width, height],
+        frame_rate: compositionOptions.frameRate,
+        enable_transitions: compositionOptions.enableTransitions,
+        transition_duration: compositionOptions.transitionDuration
+      };
+
+      const response = await axios.post(`${API_BASE_URL}/preview-timeline`, {
+        visuals: visualResult.result.visuals,
+        composition_config: compositionConfig
+      });
+      
+      // Show timeline preview
+      console.log('Timeline preview:', response.data.preview);
+      alert(`Timeline Preview:\nTotal Duration: ${response.data.preview.total_duration.toFixed(1)}s\nSegments: ${response.data.preview.total_segments}`);
+      
+    } catch (error: any) {
+      console.error('Timeline preview error:', error);
+      alert('Failed to generate timeline preview');
+    }
+  };
+
   // Fetch available voices on component mount
   useEffect(() => {
     fetchAvailableVoices();
     loadAvailableVisualTemplates();
+    loadAvailableCompositionPresets();
   }, []);
 
   return (
@@ -673,7 +770,8 @@ const VideoProcessor: React.FC = () => {
                 <li>7. Check Plagiarism: Ensure content uniqueness and compliance</li>
                 <li>8. Voice Generation: Convert text to natural speech</li>
                 <li>9. Visual Generation: Create slides, images, and graphics</li>
-                <li>10. Next: Video composition and final export (coming soon)</li>
+                <li>10. Video Composition: Combine audio and visuals into final video</li>
+                <li>11. Next: Output formatting and optimization (coming soon)</li>
               </ul>
             </div>
           </div>
@@ -1875,6 +1973,224 @@ const VideoProcessor: React.FC = () => {
                   <li>Video composition and timeline creation</li>
                   <li>Audio-visual synchronization</li>
                   <li>Final video export and optimization</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Video Composition Section */}
+        {visualResult && speechResult && (
+          <div className="result-card">
+            <h3>🎬 Video Composition System</h3>
+            <div className="result-content">
+              <p><strong>Phase 2.3.2:</strong> Combine audio and visuals into final video</p>
+              
+              {/* Composition Options */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                <h4>Composition Options</h4>
+                
+                {/* Output Format and Quality */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label><strong>Output Format:</strong></label>
+                    <select
+                      value={compositionOptions.outputFormat}
+                      onChange={(e) => setCompositionOptions(prev => ({ ...prev, outputFormat: e.target.value }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value="mp4">MP4 (Recommended)</option>
+                      <option value="avi">AVI</option>
+                      <option value="mov">MOV</option>
+                      <option value="gif">GIF</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Resolution:</strong></label>
+                    <select
+                      value={compositionOptions.resolution}
+                      onChange={(e) => setCompositionOptions(prev => ({ ...prev, resolution: e.target.value }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value="1920x1080">HD (1920x1080)</option>
+                      <option value="1280x720">HD Ready (1280x720)</option>
+                      <option value="1080x1080">Square (1080x1080)</option>
+                      <option value="3840x2160">4K (3840x2160)</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Frame Rate:</strong></label>
+                    <select
+                      value={compositionOptions.frameRate}
+                      onChange={(e) => setCompositionOptions(prev => ({ ...prev, frameRate: parseInt(e.target.value) }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value={24}>24 fps (Film)</option>
+                      <option value={25}>25 fps (PAL)</option>
+                      <option value={30}>30 fps (NTSC)</option>
+                      <option value={60}>60 fps (Smooth)</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Transition Duration:</strong></label>
+                    <select
+                      value={compositionOptions.transitionDuration}
+                      onChange={(e) => setCompositionOptions(prev => ({ ...prev, transitionDuration: parseFloat(e.target.value) }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value={0.3}>Fast (0.3s)</option>
+                      <option value={0.5}>Normal (0.5s)</option>
+                      <option value={0.8}>Slow (0.8s)</option>
+                      <option value={1.0}>Very Slow (1.0s)</option>
+                    </select>
+                  </div>
+                </div>
+                
+                {/* Enhancement Options */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <h5>Enhancement Options</h5>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={compositionOptions.enableTransitions}
+                        onChange={(e) => setCompositionOptions(prev => ({ ...prev, enableTransitions: e.target.checked }))}
+                      />
+                      <strong>Enable Transitions</strong>
+                    </label>
+                    
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={compositionOptions.enableEnhancement}
+                        onChange={(e) => setCompositionOptions(prev => ({ ...prev, enableEnhancement: e.target.checked }))}
+                      />
+                      <strong>Video Enhancement</strong>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Available Presets Info */}
+                {availableCompositionPresets && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                    <h5 style={{ margin: '0 0 0.5rem 0', color: '#155724' }}>Available Presets:</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      <div>
+                        <strong>YouTube:</strong> {availableCompositionPresets.presets?.youtube?.resolution?.join('x') || 'N/A'}
+                      </div>
+                      <div>
+                        <strong>Social Media:</strong> {availableCompositionPresets.presets?.social_media?.resolution?.join('x') || 'N/A'}
+                      </div>
+                      <div>
+                        <strong>Presentation:</strong> {availableCompositionPresets.presets?.presentation?.resolution?.join('x') || 'N/A'}
+                      </div>
+                      <div>
+                        <strong>GIF:</strong> {availableCompositionPresets.presets?.gif?.resolution?.join('x') || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Action Buttons */}
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <button 
+                    onClick={previewVideoTimeline}
+                    disabled={isComposingVideo}
+                    className="btn btn-secondary"
+                    style={{ padding: '0.75rem 1.5rem' }}
+                  >
+                    👁️ Preview Timeline
+                  </button>
+                  
+                  <button 
+                    onClick={handleComposeVideo}
+                    disabled={isComposingVideo}
+                    className="btn btn-primary"
+                    style={{ padding: '0.75rem 2rem', fontSize: '1.1rem' }}
+                  >
+                    {isComposingVideo ? '🎬 Composing...' : '🎬 Compose Video'}
+                  </button>
+                </div>
+                
+                {/* Progress Indicator */}
+                {isComposingVideo && compositionProgress && (
+                  <div style={{ 
+                    marginTop: '1rem', 
+                    padding: '1rem', 
+                    backgroundColor: '#e3f2fd', 
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    border: '1px solid #2196f3'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <div style={{
+                        width: '20px',
+                        height: '20px',
+                        border: '2px solid #2196f3',
+                        borderTop: '2px solid #2196f3',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      <span style={{ fontWeight: 'bold', color: '#1976d2' }}>
+                        {compositionProgress}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Video Composition Results */}
+        {compositionResult && (
+          <div className="result-card">
+            <h3>🎬 Composed Video</h3>
+            <div className="result-content">
+              <p><strong>Status:</strong> Video successfully composed!</p>
+              
+              {/* Composition Summary */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                <h4>Composition Summary</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <p><strong>Total Duration:</strong> {compositionResult.result?.metadata?.total_duration?.toFixed(1) || 'N/A'} seconds</p>
+                  <p><strong>Total Segments:</strong> {compositionResult.result?.metadata?.total_segments || 'N/A'}</p>
+                  <p><strong>Output Format:</strong> {compositionResult.result?.metadata?.output_format || 'N/A'}</p>
+                  <p><strong>Resolution:</strong> {compositionResult.result?.metadata?.resolution?.join('x') || 'N/A'}</p>
+                  <p><strong>Frame Rate:</strong> {compositionResult.result?.metadata?.frame_rate || 'N/A'} fps</p>
+                  <p><strong>Video File:</strong> {compositionResult.result?.video_path?.split('/')?.pop() || 'N/A'}</p>
+                </div>
+              </div>
+              
+              {/* Download Video */}
+              <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                <a 
+                  href={`${API_BASE_URL}/download-video/${compositionResult.result?.video_path?.split('/')?.pop() || ''}`}
+                  download={compositionResult.result?.video_path?.split('/')?.pop() || 'composed_video.mp4'}
+                  className="btn btn-success"
+                  style={{ padding: '1rem 2rem', fontSize: '1.2rem', textDecoration: 'none', display: 'inline-block' }}
+                >
+                  💾 Download Composed Video
+                </a>
+              </div>
+              
+              {/* Next Steps */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#d1ecf1', borderRadius: '4px' }}>
+                <h4>🚀 Next Steps</h4>
+                <p>Your video has been composed successfully! The next phase will be:</p>
+                <ul style={{ marginTop: '0.5rem', marginLeft: '1.5rem' }}>
+                  <li>Video quality optimization and enhancement</li>
+                  <li>Multiple format export options</li>
+                  <li>Batch processing capabilities</li>
                 </ul>
               </div>
             </div>
