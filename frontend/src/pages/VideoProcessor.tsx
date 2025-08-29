@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 // API configuration
@@ -25,6 +25,19 @@ const VideoProcessor: React.FC = () => {
     modificationType: 'enhance',
     targetAudience: 'general',
     stylePreference: 'professional'
+  });
+
+  // Voice Generation State
+  const [isGeneratingSpeech, setIsGeneratingSpeech] = useState<boolean>(false);
+  const [speechResult, setSpeechResult] = useState<any>(null);
+  const [availableVoices, setAvailableVoices] = useState<any[]>([]);
+  const [voiceOptions, setVoiceOptions] = useState({
+    voiceId: 'default',
+    customConfig: {
+      speed: 1.0,
+      pitch: 1.0,
+      volume: 1.0
+    }
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -339,6 +352,101 @@ const VideoProcessor: React.FC = () => {
       setIsAnalyzing(false);
     }
   };
+
+  // Voice Generation Functions
+  const fetchAvailableVoices = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/available-voices`);
+      console.log('Available voices response:', response.data);
+      
+      if (response.data.voices) {
+        setAvailableVoices(Object.entries(response.data.voices).map(([id, voice]: [string, any]) => ({
+          id,
+          ...voice
+        })));
+      }
+    } catch (error: any) {
+      console.error('Error fetching voices:', error);
+      setError('Failed to fetch available voices');
+    }
+  };
+
+  const generateSpeech = async () => {
+    try {
+      if (!rewritingResult?.rewritten_content?.text) {
+        setError('Please rewrite content first before generating speech');
+        return;
+      }
+      
+      setIsGeneratingSpeech(true);
+      setError(null);
+      
+      const response = await axios.post(`${API_BASE_URL}/generate-speech`, {
+        text: rewritingResult.rewritten_content.text,
+        voice_id: voiceOptions.voiceId,
+        custom_config: voiceOptions.customConfig
+      });
+      
+      console.log('Speech generation response:', response.data);
+      
+      if (response.data.result) {
+        setSpeechResult(response.data.result);
+      } else {
+        setError('No speech result received');
+      }
+      
+    } catch (error: any) {
+      console.error('Speech generation error:', error);
+      setError(error.response?.data?.detail || error.message);
+    } finally {
+      setIsGeneratingSpeech(false);
+    }
+  };
+
+  const updateVoiceConfig = (key: string, value: number) => {
+    setVoiceOptions(prev => ({
+      ...prev,
+      customConfig: {
+        ...prev.customConfig,
+        [key]: value
+      }
+    }));
+  };
+
+  const testVoicePreview = async () => {
+    try {
+      const testText = "This is a voice preview test. You can hear how the voice settings sound.";
+      
+      setIsGeneratingSpeech(true);
+      setError(null);
+      
+      const response = await axios.post(`${API_BASE_URL}/generate-speech`, {
+        text: testText,
+        voice_id: voiceOptions.voiceId,
+        custom_config: voiceOptions.customConfig
+      });
+      
+      if (response.data.result) {
+        // Store preview result separately
+        setSpeechResult({
+          ...response.data.result,
+          isPreview: true,
+          previewText: testText
+        });
+      }
+      
+    } catch (error: any) {
+      console.error('Voice preview error:', error);
+      setError('Failed to generate voice preview');
+    } finally {
+      setIsGeneratingSpeech(false);
+    }
+  };
+
+  // Fetch available voices on component mount
+  useEffect(() => {
+    fetchAvailableVoices();
+  }, []);
 
   return (
     <div className="page">
@@ -944,6 +1052,194 @@ const VideoProcessor: React.FC = () => {
                 >
                   {isAnalyzing ? '🔍 Checking...' : '🔍 Check Plagiarism'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Generation Section */}
+        {rewritingResult && (
+          <div className="result-card">
+            <h3>🎤 Voice Generation System</h3>
+            <div className="result-content">
+              <p><strong>Phase 2.2:</strong> Convert your transformed content to natural speech</p>
+              
+              {/* Voice Selection */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                <h4>Voice Options</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label><strong>Voice Type:</strong></label>
+                    <select 
+                      value={voiceOptions.voiceId}
+                      onChange={(e) => setVoiceOptions(prev => ({ ...prev, voiceId: e.target.value }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      {availableVoices.map(voice => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.name} - {voice.description}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Speed:</strong></label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.1"
+                      value={voiceOptions.customConfig.speed}
+                      onChange={(e) => updateVoiceConfig('speed', parseFloat(e.target.value))}
+                      style={{ width: '100%', marginTop: '0.25rem' }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#666' }}>
+                      {voiceOptions.customConfig.speed}x
+                    </span>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Pitch:</strong></label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.1"
+                      value={voiceOptions.customConfig.pitch}
+                      onChange={(e) => updateVoiceConfig('pitch', parseFloat(e.target.value))}
+                      style={{ width: '100%', marginTop: '0.25rem' }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#666' }}>
+                      {voiceOptions.customConfig.pitch}x
+                    </span>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Volume:</strong></label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2.0"
+                      step="0.1"
+                      value={voiceOptions.customConfig.volume}
+                      onChange={(e) => updateVoiceConfig('volume', parseFloat(e.target.value))}
+                      style={{ width: '100%', marginTop: '0.25rem' }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#666' }}>
+                      {voiceOptions.customConfig.volume}x
+                    </span>
+                  </div>
+                </div>
+                
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <button 
+                    onClick={testVoicePreview}
+                    disabled={isGeneratingSpeech}
+                    className="btn btn-secondary"
+                    style={{ flex: 1, maxWidth: '200px' }}
+                  >
+                    {isGeneratingSpeech ? '🎵 Testing...' : '🎵 Test Voice'}
+                  </button>
+                  <button 
+                    onClick={generateSpeech}
+                    disabled={isGeneratingSpeech}
+                    className="btn btn-primary"
+                    style={{ flex: 1, maxWidth: '200px' }}
+                  >
+                    {isGeneratingSpeech ? '🎤 Generating...' : '🎤 Generate Speech'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Generation Results */}
+        {speechResult && (
+          <div className="result-card">
+            <h3>{speechResult.isPreview ? '🎵 Voice Preview' : '🎵 Generated Speech'}</h3>
+            <div className="result-content">
+              <p><strong>Status:</strong> {speechResult.isPreview ? 'Voice preview generated' : 'Speech successfully generated'}</p>
+              
+              {speechResult.isPreview && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
+                  <h4>🎯 Preview Text:</h4>
+                  <p style={{ fontStyle: 'italic' }}>"{speechResult.previewText}"</p>
+                  <p style={{ fontSize: '0.8rem', color: '#666' }}>
+                    This is a test preview. Use the "Generate Speech" button for your full content.
+                  </p>
+                </div>
+              )}
+              
+              {/* Speech Details */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                <h4>Audio Information</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <p><strong>Duration:</strong> {speechResult.speech_output?.duration_seconds?.toFixed(2) || 'N/A'} seconds</p>
+                  <p><strong>File Size:</strong> {speechResult.speech_output?.file_size_bytes || 'N/A'} bytes</p>
+                  <p><strong>Format:</strong> {speechResult.speech_output?.audio_format || 'N/A'}</p>
+                  <p><strong>Processing Time:</strong> {speechResult.speech_output?.processing_time?.toFixed(2) || 'N/A'} seconds</p>
+                </div>
+                
+                {/* Voice Characteristics */}
+                {speechResult.speech_output?.voice_characteristics && (
+                  <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px' }}>
+                    <h5>Voice Settings Applied:</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                      <p><strong>Speed:</strong> {speechResult.speech_output.voice_characteristics.speed}x</p>
+                      <p><strong>Pitch:</strong> {speechResult.speech_output.voice_characteristics.pitch}x</p>
+                      <p><strong>Volume:</strong> {speechResult.speech_output.voice_characteristics.volume}x</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Audio File Path */}
+                <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
+                  <p><strong>Audio File:</strong> {speechResult.speech_output?.audio_file_path || 'N/A'}</p>
+                  <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                    File saved to backend output directory
+                  </p>
+                </div>
+                
+                {/* Audio Player */}
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
+                  <h5>🎵 Listen to Generated Speech:</h5>
+                  <audio 
+                    controls 
+                    style={{ width: '100%', marginTop: '0.5rem' }}
+                    src={`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`}
+                  >
+                    Your browser does not support the audio element.
+                  </audio>
+                  
+                  {/* Download Button */}
+                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                    <a 
+                      href={`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`}
+                      download={speechResult.speech_output?.audio_file_path?.split('/')?.pop() || 'generated_speech.mp3'}
+                      className="btn btn-secondary"
+                      style={{ display: 'inline-block', textDecoration: 'none' }}
+                    >
+                      💾 Download Audio File
+                    </a>
+                  </div>
+                  
+                  <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
+                    🔊 Click play to hear your generated speech with the selected voice settings
+                  </p>
+                </div>
+              </div>
+              
+              {/* Next Steps */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#d1ecf1', borderRadius: '4px' }}>
+                <h4>🚀 Next Steps</h4>
+                <p>Your speech has been generated! The next phase will be:</p>
+                <ul style={{ marginTop: '0.5rem', marginLeft: '1.5rem' }}>
+                  <li>Audio post-processing and enhancement</li>
+                  <li>Video generation with visual content</li>
+                  <li>Final video composition and output</li>
+                </ul>
               </div>
             </div>
           </div>
