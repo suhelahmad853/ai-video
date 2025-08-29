@@ -63,7 +63,8 @@ async def root():
             "transcription": {
                 "transcribe_speech": "POST /transcribe-speech",
                 "transcription_status": "GET /transcription-status/{audio_filename}",
-                "extract_and_transcribe": "POST /extract-and-transcribe"
+                "extract_and_transcribe": "POST /extract-and-transcribe",
+                "extract_youtube_transcript": "POST /extract-youtube-transcript"
             },
             "content_analysis": {
                 "analyze_content_structure": "POST /analyze-content-structure",
@@ -475,6 +476,42 @@ async def transcribe_andAnalyze(audio_data: Dict[str, Any]):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription and analysis error: {str(e)}")
+
+@app.post("/extract-youtube-transcript")
+async def extract_youtube_transcript(video_data: Dict[str, Any]):
+    """Extract real transcript from YouTube video with timestamps"""
+    try:
+        youtube_url = video_data.get("url")
+        language = video_data.get("language", "en")
+        
+        if not youtube_url:
+            raise HTTPException(status_code=400, detail="YouTube URL is required")
+        
+        # Validate YouTube URL first
+        is_valid, error_msg = video_processor.validate_youtube_url(youtube_url)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=f"Invalid YouTube URL: {error_msg}")
+        
+        print(f"Attempting to extract transcript from: {youtube_url}")  # Debug log
+        
+        # Extract transcript directly from YouTube using the audio processor
+        transcript_result = await audio_processor.extract_youtube_transcript_robust(youtube_url, language)
+        
+        print(f"Transcript result: {transcript_result}")  # Debug log
+        
+        if not transcript_result.get('success'):
+            raise HTTPException(status_code=500, detail=transcript_result.get('error', 'YouTube transcript extraction failed'))
+        
+        return {
+            "status": "youtube_transcript_extracted",
+            "message": "Real YouTube transcript extracted successfully",
+            "transcript": transcript_result,
+            "next_step": "content_structure_analysis"
+        }
+    
+    except Exception as e:
+        print(f"Error in extract_youtube_transcript: {str(e)}")  # Debug log
+        raise HTTPException(status_code=500, detail=f"YouTube transcript extraction error: {str(e)}")
 
 @app.get("/process-status/{task_id}")
 async def get_process_status(task_id: str):

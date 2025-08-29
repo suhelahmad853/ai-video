@@ -6,72 +6,38 @@ const API_BASE_URL = 'http://localhost:8001';
 
 const VideoProcessor: React.FC = () => {
   // State variables
-  const [url, setUrl] = useState("");
-  const [quality, setQuality] = useState("720p");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [url, setUrl] = useState<string>('');
+  const [quality, setQuality] = useState<string>('720p');
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [restrictions, setRestrictions] = useState<any>(null);
-  const [canProcess, setCanProcess] = useState<boolean | null>(null);
+  const [canProcess, setCanProcess] = useState<boolean>(true);
   const [transcription, setTranscription] = useState<any>(null);
-  const [transcriptionStatus, setTranscriptionStatus] = useState<string>("");
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionStatus, setTranscriptionStatus] = useState<string>('');
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [contentAnalysis, setContentAnalysis] = useState<any>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [dragActive, setDragActive] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('video/')) {
-        setUploadedFile(file);
-        console.log('File dropped:', file.name);
-      } else {
-        setError('Please drop a valid video file');
-      }
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
-
+    
     setIsProcessing(true);
     setError(null);
-
+    
     try {
-      // Step 1: Validate and get video info
       const response = await axios.post(`${API_BASE_URL}/process-video`, {
         url: url,
         quality: quality
       });
-
+      
       setResult(response.data);
-
-      // Step 2: Analyze content for AI transformation
-      const analysisResponse = await axios.post(`${API_BASE_URL}/analyze-content`, {
-        url: url,
-        quality: quality
-      });
-
-      setResult((prev: any) => ({ ...prev, analysis: analysisResponse.data }));
-
+      
+      // Check restrictions after processing
+      await checkVideoRestrictions();
+      
     } catch (error: any) {
       setError(error.response?.data?.detail || error.message);
     } finally {
@@ -158,6 +124,11 @@ const VideoProcessor: React.FC = () => {
 
   const performFullPipeline = async () => {
     try {
+      if (!url) {
+        setError('Please enter a YouTube URL first');
+        return;
+      }
+      
       setIsProcessing(true);
       setError(null);
       
@@ -177,20 +148,11 @@ const VideoProcessor: React.FC = () => {
       
       setResult(response.data);
       
-      // Step 3: Extract and transcribe audio
-      const transcribeResponse = await axios.post(`${API_BASE_URL}/extract-and-transcribe`, {
-        video_path: response.data.video_path,
-        quality: quality,
-        language: "en",
-        model_size: "base"
-      });
+      // Step 3: Extract metadata
+      await handleExtractMetadata();
       
-      setTranscription(transcribeResponse.data);
-      
-      // Step 4: Analyze content structure
-      if (transcribeResponse.data.transcription?.text) {
-        await analyzeContentStructure(transcribeResponse.data.transcription);
-      }
+      // Step 4: Use the working transcription approach
+      await transcribeAndAnalyze();
       
       setIsProcessing(false);
     } catch (error: any) {
@@ -236,22 +198,36 @@ const VideoProcessor: React.FC = () => {
 
   const transcribeAndAnalyze = async () => {
     try {
+      if (!url) {
+        setError('Please enter a YouTube URL first');
+        return;
+      }
+      
       setIsTranscribing(true);
       setIsAnalyzing(true);
       setError(null);
       
-      const response = await axios.post(`${API_BASE_URL}/transcribe-and-analyze`, {
-        audio_path: "temp/ADXNcv6KbMQ_audio.mp3",
-        language: "en",
-        model_size: "base"
+      // Extract REAL YouTube transcript with timestamps
+      const transcriptResponse = await axios.post(`${API_BASE_URL}/extract-youtube-transcript`, {
+        url: url,
+        language: "en"
       });
       
-      setTranscription(response.data.transcription);
-      setContentAnalysis(response.data.content_analysis);
-      // Fix: Set the analysis result correctly
-      setAnalysisResult(response.data.content_analysis.content_structure);
+      console.log('Real YouTube transcript response:', transcriptResponse.data);
+      
+      if (transcriptResponse.data.transcript && transcriptResponse.data.transcript.transcription) {
+        setTranscription(transcriptResponse.data.transcript.transcription);
+        
+        // Now analyze the content structure with the real transcript
+        if (transcriptResponse.data.transcript.transcription.text) {
+          await analyzeContentStructure(transcriptResponse.data.transcript.transcription);
+        }
+      } else {
+        setError('No real transcript data received from YouTube');
+      }
       
     } catch (error: any) {
+      console.error('Real transcript extraction error:', error);
       setError(error.response?.data?.detail || error.message);
     } finally {
       setIsTranscribing(false);
@@ -271,60 +247,6 @@ const VideoProcessor: React.FC = () => {
 
         <div className="video-input-section">
           <form onSubmit={handleSubmit} className="video-input-form">
-            {/* File Upload Section */}
-            <div className="upload-section">
-              <h3>Upload Video File (Optional)</h3>
-              <div 
-                className={`file-upload-area ${dragActive ? 'drag-active' : ''}`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-              >
-                <input
-                  type="file"
-                  id="videoFile"
-                  className="file-input"
-                  accept="video/*,.mp4,.avi,.mov,.mkv"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setUploadedFile(file);
-                      console.log('File selected:', file.name);
-                    }
-                  }}
-                />
-                <label htmlFor="videoFile" className="file-upload-label">
-                  {uploadedFile ? (
-                    <>
-                      <div className="upload-icon">✅</div>
-                      <div className="upload-text">
-                        <strong>File Uploaded!</strong>
-                        <span>{uploadedFile.name}</span>
-                        <span className="file-size">{(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB</span>
-                        <button 
-                          type="button" 
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => setUploadedFile(null)}
-                        >
-                          Remove File
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="upload-icon">📁</div>
-                      <div className="upload-text">
-                        <strong>Choose a video file</strong>
-                        <span>or drag and drop here</span>
-                        <span className="file-types">MP4, AVI, MOV, MKV up to 500MB</span>
-                      </div>
-                    </>
-                  )}
-                </label>
-              </div>
-            </div>
-
             <div className="form-group">
               <label htmlFor="videoUrl" className="form-label">
                 YouTube Video URL
@@ -333,120 +255,106 @@ const VideoProcessor: React.FC = () => {
                 type="url"
                 id="videoUrl"
                 className="form-input"
-                placeholder="https://www.youtube.com/watch?v=..."
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                disabled={isProcessing}
+                placeholder="https://www.youtube.com/watch?v=..."
                 required
               />
-              <small className="form-help">Enter a YouTube URL to process online videos</small>
             </div>
 
             <div className="form-group">
               <label htmlFor="quality" className="form-label">
-                Analysis Quality
+                Quality Preference
               </label>
               <select
                 id="quality"
-                className="form-input"
+                className="form-select"
                 value={quality}
                 onChange={(e) => setQuality(e.target.value)}
-                disabled={isProcessing}
               >
-                <option value="480p">480p (Faster)</option>
-                <option value="720p">720p (Recommended)</option>
-                <option value="1080p">1080p (Higher Quality)</option>
+                <option value="720p">720p (HD)</option>
+                <option value="1080p">1080p (Full HD)</option>
+                <option value="480p">480p (SD)</option>
+                <option value="360p">360p (Low)</option>
               </select>
             </div>
 
-            <button
-              type="submit"
-              className="btn"
-              disabled={isProcessing || !url.trim()}
-            >
-              {isProcessing ? (
-                <>
-                  <span className="loading"></span>
-                  Processing...
-                </>
-              ) : (
-                'Process Video'
-              )}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ marginLeft: '0.5rem' }}
-              disabled={isProcessing || !url.trim()}
-              onClick={handleExtractMetadata}
-            >
-              {isProcessing ? 'Please wait...' : 'Extract Metadata'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ marginLeft: '0.5rem' }}
-              disabled={isProcessing || !url.trim()}
-              onClick={checkVideoRestrictions}
-            >
-              {isProcessing ? 'Please wait...' : 'Check Restrictions'}
-            </button>
+            <div className="button-group">
+              <button type="submit" className="btn btn-primary" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Process Video'}
+              </button>
+              
+              <button 
+                type="button" 
+                className="btn btn-success" 
+                onClick={handleExtractMetadata}
+                disabled={isProcessing}
+              >
+                {isProcessing ? 'Please wait...' : 'Extract Metadata'}
+              </button>
+              
+              <button 
+                type="button" 
+                className="btn btn-info" 
+                onClick={checkVideoRestrictions}
+                disabled={isProcessing}
+              >
+                Check Restrictions
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Button Workflow Explanation */}
+        <div className="workflow-guide" style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+          <h3>🎯 Workflow Guide</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+            <div>
+              <strong>1. Process Video:</strong> Validates YouTube URL and extracts basic info
+            </div>
+            <div>
+              <strong>2. Extract Metadata:</strong> Gets detailed video information (views, likes, etc.)
+            </div>
+            <div>
+              <strong>3. Check Restrictions:</strong> Verifies if video can be processed
+            </div>
+            <div>
+              <strong>4. Quick Transcribe & Analyze:</strong> Extracts REAL YouTube transcript with timestamps and analyzes content
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="action-buttons" style={{ marginTop: '2rem' }}>
+          <div className="button-group" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <button
               type="button"
               className="btn btn-primary"
-              style={{ marginLeft: '0.5rem' }}
-              disabled={isProcessing || !url.trim()}
-              onClick={performFullPipeline}
-            >
-              {isProcessing ? 'Processing...' : 'Run Full Pipeline'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-info"
-              style={{ marginLeft: '0.5rem' }}
-              disabled={isTranscribing || !transcription}
-              onClick={() => transcription && analyzeContentStructure(transcription)}
-            >
-              {isAnalyzing ? 'Analyzing...' : 'Analyze Content Structure'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-success"
-              style={{ marginLeft: '0.5rem' }}
               disabled={isTranscribing || isAnalyzing || !url.trim()}
               onClick={transcribeAndAnalyze}
             >
               {(isTranscribing || isAnalyzing) ? 'Processing...' : 'Quick Transcribe & Analyze'}
             </button>
+            
             <button
               type="button"
-              className="btn btn-warning"
-              style={{ marginLeft: '0.5rem' }}
-              disabled={isAnalyzing}
-              onClick={() => {
-                const testData = {
-                  text: "This is a test text for content analysis. It contains multiple sentences to analyze the structure and extract insights. This will help us debug the content overview display issue."
-                };
-                analyzeContentStructure(testData);
-              }}
+              className="btn btn-secondary"
+              disabled={isAnalyzing || !transcription}
+              onClick={() => transcription && analyzeContentStructure(transcription)}
             >
-              {isAnalyzing ? 'Testing...' : 'Test Content Analysis'}
+              {isAnalyzing ? 'Analyzing...' : 'Analyze Content Structure'}
             </button>
-          </form>
-
-          {/* Button Workflow Explanation */}
-          <div className="workflow-explanation" style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '0.5rem', border: '1px solid #dee2e6' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: '#495057' }}>📋 Workflow Guide:</h4>
-            <div style={{ fontSize: '0.9rem', color: '#6c757d' }}>
-              <p><strong>1. Process Video:</strong> Basic video processing and validation</p>
-              <p><strong>2. Extract Metadata:</strong> Get video information and details</p>
-              <p><strong>3. Check Restrictions:</strong> Verify video can be processed</p>
-              <p><strong>4. Run Full Pipeline:</strong> Complete workflow: video → audio → transcription → analysis</p>
-              <p><strong>5. Analyze Content Structure:</strong> Analyze existing transcription (requires transcription first)</p>
-              <p><strong>6. Quick Transcribe & Analyze:</strong> Fast transcription + analysis using test audio file</p>
-              <p><strong>7. Test Content Analysis:</strong> Test content analysis with sample data (for debugging)</p>
-            </div>
+            
+            <button
+              type="button"
+              className="btn btn-success"
+              disabled={isTranscribing || isAnalyzing || !url.trim()}
+              onClick={performFullPipeline}
+            >
+              {isProcessing ? 'Processing...' : 'Run Full Pipeline'}
+            </button>
           </div>
+        </div>
 
           {/* Progress Section */}
           {isProcessing && (
@@ -489,31 +397,19 @@ const VideoProcessor: React.FC = () => {
             </div>
           )}
 
-          {/* Results Section */}
-          {result && (
-            <div className="results-section">
-              <h2>Processing Results</h2>
-              
-              <div className="result-card">
-                <h3>Video Information</h3>
-                <div className="result-content">
-                  <p><strong>Status:</strong> {result.status}</p>
-                  {result.video_path && (
-                    <p><strong>Video Path:</strong> {result.video_path}</p>
-                  )}
-                  {result.message && (
-                    <p><strong>Message:</strong> {result.message}</p>
-                  )}
-                </div>
-              </div>
-
-              {result.analysis && (
+        {/* Results Display */}
+        {result && (
+          <div className="results-section">
+            <h2>Processing Results</h2>
+            
+            <div className="result-cards">
+              {result.status && (
                 <div className="result-card">
-                  <h3>Content Analysis</h3>
+                  <h3>Status</h3>
                   <div className="result-content">
-                    <p><strong>Status:</strong> {result.analysis.status}</p>
-                    {result.analysis.message && (
-                      <p><strong>Message:</strong> {result.analysis.message}</p>
+                    <p><strong>Status:</strong> {result.status}</p>
+                    {result.message && (
+                      <p><strong>Message:</strong> {result.message}</p>
                     )}
                   </div>
                 </div>
@@ -576,136 +472,79 @@ const VideoProcessor: React.FC = () => {
                 </div>
               )}
             </div>
-          )}
+          </div>
+        )}
 
-          {restrictions && (
-            <div className="card" style={{ marginTop: '1rem' }}>
-              <h3>Video Restrictions</h3>
-              <div style={{ 
-                padding: '1rem', 
-                marginBottom: '1rem', 
-                borderRadius: '4px',
-                backgroundColor: canProcess ? '#d4edda' : '#f8d7da',
-                border: `1px solid ${canProcess ? '#c3e6cb' : '#f5c6cb'}`,
-                color: canProcess ? '#155724' : '#721c24'
-              }}>
-                <strong>Status:</strong> {canProcess ? '✅ Can Process' : '❌ Cannot Process'}
-                <br />
-                <strong>Reason:</strong> {restrictions.reason}
-                {restrictions.recommendation && (
-                  <>
-                    <br />
-                    <strong>Recommendation:</strong> {restrictions.recommendation}
-                  </>
-                )}
-                {restrictions.age_limit && (
-                  <>
-                    <br />
-                    <strong>Age Limit:</strong> {restrictions.age_limit}+
-                  </>
-                )}
-              </div>
-              
-              {restrictions.video_id && (
-                <div style={{ marginTop: '1rem' }}>
-                  <strong>Video ID:</strong> {restrictions.video_id}
-                </div>
-              )}
-              
-              {restrictions.title && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <strong>Title:</strong> {restrictions.title}
-                </div>
-              )}
+        {/* Transcription Display */}
+        {transcription && (
+          <div className="card" style={{ marginTop: '1rem' }}>
+            <h3>Speech-to-Text Transcription</h3>
+            <div style={{ 
+              padding: '1rem', 
+              marginBottom: '1rem', 
+              borderRadius: '4px',
+              backgroundColor: '#d1ecf1',
+              border: '1px solid #bee5eb',
+              color: '#0c5460'
+            }}>
+              <strong>Status:</strong> ✅ Transcription Completed
+              <br />
+              <strong>Model Used:</strong> {transcription.model_used}
+              <br />
+              <strong>Language:</strong> {transcription.language}
+              <br />
+              <strong>Word Count:</strong> {transcription.word_count}
+              <br />
+              <strong>Confidence Score:</strong> {(transcription.confidence_score * 100).toFixed(1)}%
+              <br />
+              <strong>Processing Time:</strong> {transcription.processing_time_seconds}s
             </div>
-          )}
-
-          {transcription && (
-            <div className="card" style={{ marginTop: '1rem' }}>
-              <h3>Speech-to-Text Transcription</h3>
+            
+            <div style={{ marginTop: '1rem' }}>
+              <strong>Transcribed Text:</strong>
               <div style={{ 
+                marginTop: '0.5rem', 
                 padding: '1rem', 
-                marginBottom: '1rem', 
+                backgroundColor: '#f8f9fa', 
                 borderRadius: '4px',
-                backgroundColor: '#d1ecf1',
-                border: '1px solid #bee5eb',
-                color: '#0c5460'
+                fontSize: '0.9rem',
+                lineHeight: '1.5',
+                maxHeight: '300px',
+                overflowY: 'auto'
               }}>
-                <strong>Status:</strong> ✅ Transcription Completed
-                <br />
-                <strong>Model Used:</strong> {transcription.model_used}
-                <br />
-                <strong>Language:</strong> {transcription.language}
-                <br />
-                <strong>Word Count:</strong> {transcription.word_count}
-                <br />
-                <strong>Confidence Score:</strong> {(transcription.confidence_score * 100).toFixed(1)}%
-                <br />
-                <strong>Processing Time:</strong> {transcription.processing_time_seconds}s
+                {transcription.text}
               </div>
-              
+            </div>
+            
+            {transcription.segments && transcription.segments.length > 0 && (
               <div style={{ marginTop: '1rem' }}>
-                <strong>Transcribed Text:</strong>
-                <div style={{ 
-                  marginTop: '0.5rem', 
-                  padding: '1rem', 
-                  backgroundColor: '#f8f9fa', 
-                  borderRadius: '4px',
-                  fontSize: '0.9rem',
-                  lineHeight: '1.5',
-                  maxHeight: '300px',
-                  overflowY: 'auto'
-                }}>
-                  {transcription.text}
+                <strong>Segments:</strong>
+                <div style={{ marginTop: '0.5rem' }}>
+                  {transcription.segments.map((segment: any, index: number) => (
+                    <div key={index} style={{ 
+                      marginBottom: '0.5rem', 
+                      padding: '0.5rem', 
+                      backgroundColor: '#e9ecef', 
+                      borderRadius: '4px',
+                      fontSize: '0.85rem'
+                    }}>
+                      <strong>Segment {index + 1}:</strong> {segment.start.toFixed(1)}s - {segment.end.toFixed(1)}s
+                      <br />
+                      <strong>Confidence:</strong> {(segment.confidence * 100).toFixed(1)}%
+                      <br />
+                      <strong>Text:</strong> {segment.text.substring(0, 100)}{segment.text.length > 100 ? '...' : ''}
+                    </div>
+                  ))}
                 </div>
               </div>
-              
-              {transcription.segments && transcription.segments.length > 0 && (
-                <div style={{ marginTop: '1rem' }}>
-                  <strong>Segments:</strong>
-                  <div style={{ marginTop: '0.5rem' }}>
-                    {transcription.segments.map((segment: any, index: number) => (
-                      <div key={index} style={{ 
-                        marginBottom: '0.5rem', 
-                        padding: '0.5rem', 
-                        backgroundColor: '#e9ecef', 
-                        borderRadius: '4px',
-                        fontSize: '0.85rem'
-                      }}>
-                        <strong>Segment {index + 1}:</strong> {segment.start.toFixed(1)}s - {segment.end.toFixed(1)}s
-                        <br />
-                        <strong>Confidence:</strong> {(segment.confidence * 100).toFixed(1)}%
-                        <br />
-                        <strong>Text:</strong> {segment.text.substring(0, 100)}{segment.text.length > 100 ? '...' : ''}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#d4edda', borderRadius: '4px' }}>
-                <strong>Next Step:</strong> {transcription.next_step || 'Content structure analysis'}
-              </div>
+            )}
+            
+            <div style={{ marginTop: '1rem', padding: '0.5rem', backgroundColor: '#d4edda', borderRadius: '4px' }}>
+              <strong>Next Step:</strong> {transcription.next_step || 'Content structure analysis'}
             </div>
-          )}
+          </div>
+        )}
 
-          {transcriptionStatus && !transcription && (
-            <div className="card" style={{ marginTop: '1rem' }}>
-              <h3>Transcription Status</h3>
-              <div style={{ 
-                padding: '1rem', 
-                borderRadius: '4px',
-                backgroundColor: isTranscribing ? '#fff3cd' : '#f8d7da',
-                border: `1px solid ${isTranscribing ? '#ffeaa7' : '#f5c6cb'}`,
-                color: isTranscribing ? '#856404' : '#721c24'
-              }}>
-                <strong>Status:</strong> {isTranscribing ? '🔄 Transcribing...' : '❌ Transcription Failed'}
-                <br />
-                <strong>Message:</strong> {transcriptionStatus}
-              </div>
-            </div>
-          )}
-        </div>
         {/* Content Analysis Section */}
         {contentAnalysis && (
           <div className="content-analysis-section">
