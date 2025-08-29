@@ -19,6 +19,13 @@ const VideoProcessor: React.FC = () => {
   const [contentAnalysis, setContentAnalysis] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewritingResult, setRewritingResult] = useState<any>(null);
+  const [rewritingOptions, setRewritingOptions] = useState({
+    modificationType: 'enhance',
+    targetAudience: 'general',
+    stylePreference: 'professional'
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,6 +242,104 @@ const VideoProcessor: React.FC = () => {
     }
   };
 
+  const rewriteContent = async () => {
+    try {
+      if (!transcription?.text) {
+        setError('Please transcribe content first before rewriting');
+        return;
+      }
+      
+      setIsRewriting(true);
+      setError(null);
+      
+      const response = await axios.post(`${API_BASE_URL}/rewrite-content`, {
+        text: transcription.text,
+        modification_type: rewritingOptions.modificationType,
+        target_audience: rewritingOptions.targetAudience,
+        style_preference: rewritingOptions.stylePreference
+      });
+      
+      console.log('Content rewriting response:', response.data);
+      
+      if (response.data.result) {
+        setRewritingResult(response.data.result);
+      } else {
+        setError('No rewriting result received');
+      }
+      
+    } catch (error: any) {
+      console.error('Content rewriting error:', error);
+      setError(error.response?.data?.detail || error.message);
+    } finally {
+      setIsRewriting(false);
+    }
+  };
+
+  const analyzeContentSimilarity = async () => {
+    try {
+      if (!transcription?.text || !rewritingResult?.rewritten_content?.text) {
+        setError('Please have both original and rewritten content for similarity analysis');
+        return;
+      }
+      
+      setIsAnalyzing(true);
+      setError(null);
+      
+      const response = await axios.post(`${API_BASE_URL}/analyze-content-similarity`, {
+        original_text: transcription.text,
+        comparison_text: rewritingResult.rewritten_content.text
+      });
+      
+      console.log('Similarity analysis response:', response.data);
+      
+      if (response.data.result) {
+        // Update analysis result with similarity data
+        setAnalysisResult((prev: any) => ({
+          ...prev,
+          similarity_analysis: response.data.result
+        }));
+      }
+      
+    } catch (error: any) {
+      console.error('Similarity analysis error:', error);
+      setError(error.response?.data?.detail || error.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const checkPlagiarism = async () => {
+    try {
+      if (!rewritingResult?.rewritten_content?.text) {
+        setError('Please rewrite content first before checking plagiarism');
+        return;
+      }
+      
+      setIsAnalyzing(true);
+      setError(null);
+      
+      const response = await axios.post(`${API_BASE_URL}/check-plagiarism`, {
+        text: rewritingResult.rewritten_content.text
+      });
+      
+      console.log('Plagiarism check response:', response.data);
+      
+      if (response.data.result) {
+        // Update analysis result with plagiarism data
+        setAnalysisResult((prev: any) => ({
+          ...prev,
+          plagiarism_check: response.data.result
+        }));
+      }
+      
+    } catch (error: any) {
+      console.error('Plagiarism check error:', error);
+      setError(error.response?.data?.detail || error.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="container">
@@ -310,16 +415,22 @@ const VideoProcessor: React.FC = () => {
           <h3>🎯 Workflow Guide</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
             <div>
-              <strong>1. Process Video:</strong> Validates YouTube URL and extracts basic info
+              <strong>Phase 1 - Core Processing:</strong>
+              <ul style={{ marginTop: '0.5rem', marginLeft: '1.5rem' }}>
+                <li>1. Process Video: Validates YouTube URL and extracts basic info</li>
+                <li>2. Extract Metadata: Gets detailed video information (views, likes, etc.)</li>
+                <li>3. Check Restrictions: Verifies if video can be processed</li>
+                <li>4. Quick Transcribe & Analyze: Extracts REAL YouTube transcript with timestamps and analyzes content</li>
+              </ul>
             </div>
             <div>
-              <strong>2. Extract Metadata:</strong> Gets detailed video information (views, likes, etc.)
-            </div>
-            <div>
-              <strong>3. Check Restrictions:</strong> Verifies if video can be processed
-            </div>
-            <div>
-              <strong>4. Quick Transcribe & Analyze:</strong> Extracts REAL YouTube transcript with timestamps and analyzes content
+              <strong>Phase 2 - AI Transformation:</strong>
+              <ul style={{ marginTop: '0.5rem', marginLeft: '1.5rem' }}>
+                <li>5. Transform Content: AI-powered content rewriting and enhancement</li>
+                <li>6. Analyze Similarity: Compare original vs. transformed content</li>
+                <li>7. Check Plagiarism: Ensure content uniqueness and compliance</li>
+                <li>8. Next: Voice generation and video creation (coming soon)</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -645,6 +756,196 @@ const VideoProcessor: React.FC = () => {
                 <p><strong>Analysis saved to:</strong> {contentAnalysis.saved_path}</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Content Analysis Results */}
+        {analysisResult && (
+          <div className="result-card">
+            <h3>Content Analysis Results</h3>
+            <div className="result-content">
+              <p><strong>Status:</strong> Content analysis completed</p>
+              {analysisResult.content_structure && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                  <h4>Content Structure</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <p><strong>Total Sentences:</strong> {analysisResult.content_structure.total_sentences || 'N/A'}</p>
+                    <p><strong>Total Words:</strong> {analysisResult.content_structure.total_words || 'N/A'}</p>
+                    <p><strong>Average Sentence Length:</strong> {analysisResult.content_structure.average_sentence_length || 'N/A'}</p>
+                    <p><strong>Complexity Score:</strong> {analysisResult.content_structure.complexity_score || 'N/A'}</p>
+                    <p><strong>Readability Level:</strong> {analysisResult.content_structure.readability_level || 'N/A'}</p>
+                    <p><strong>Main Topics:</strong> {analysisResult.content_structure.content_topics?.join(', ') || 'N/A'}</p>
+                  </div>
+                </div>
+              )}
+              {analysisResult.similarity_analysis && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                  <h4>Similarity Analysis</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <p><strong>Similarity Score:</strong> {analysisResult.similarity_analysis.similarity_score}%</p>
+                    <p><strong>Similarity Level:</strong> {analysisResult.similarity_analysis.similarity_level}</p>
+                    <p><strong>Word Overlap:</strong> {analysisResult.similarity_analysis.word_overlap_percentage}%</p>
+                    <p><strong>Risk Assessment:</strong> {analysisResult.similarity_analysis.risk_assessment}</p>
+                  </div>
+                  {analysisResult.similarity_analysis.recommendations && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong>Recommendations:</strong>
+                      <ul style={{ marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+                        {analysisResult.similarity_analysis.recommendations.map((rec: string, index: number) => (
+                          <li key={index}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              {analysisResult.plagiarism_check && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
+                  <h4>Plagiarism Check</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <p><strong>Uniqueness Score:</strong> {analysisResult.plagiarism_check.uniqueness_score}%</p>
+                    <p><strong>Risk Level:</strong> {analysisResult.plagiarism_check.risk_level}</p>
+                    <p><strong>Compliance Status:</strong> {analysisResult.plagiarism_check.compliance_status}</p>
+                  </div>
+                  {analysisResult.plagiarism_check.recommendations && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong>Recommendations:</strong>
+                      <ul style={{ marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+                        {analysisResult.plagiarism_check.recommendations.map((rec: string, index: number) => (
+                          <li key={index}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Content Rewriting Section */}
+        {transcription?.text && (
+          <div className="result-card">
+            <h3>🎨 AI Content Transformation</h3>
+            <div className="result-content">
+              <p><strong>Phase 2:</strong> Transform your transcribed content using AI-powered rewriting</p>
+              
+              {/* Rewriting Options */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                <h4>Rewriting Options</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label><strong>Modification Type:</strong></label>
+                    <select 
+                      value={rewritingOptions.modificationType}
+                      onChange={(e) => setRewritingOptions(prev => ({ ...prev, modificationType: e.target.value }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value="enhance">Enhance & Improve</option>
+                      <option value="simplify">Simplify & Clarify</option>
+                      <option value="formalize">Make Formal</option>
+                      <option value="casual">Make Casual</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label><strong>Target Audience:</strong></label>
+                    <select 
+                      value={rewritingOptions.targetAudience}
+                      onChange={(e) => setRewritingOptions(prev => ({ ...prev, targetAudience: e.target.value }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value="general">General</option>
+                      <option value="technical">Technical</option>
+                      <option value="academic">Academic</option>
+                      <option value="casual">Casual</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label><strong>Writing Style:</strong></label>
+                    <select 
+                      value={rewritingOptions.stylePreference}
+                      onChange={(e) => setRewritingOptions(prev => ({ ...prev, stylePreference: e.target.value }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value="professional">Professional</option>
+                      <option value="conversational">Conversational</option>
+                      <option value="academic">Academic</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'end' }}>
+                    <button 
+                      onClick={rewriteContent}
+                      disabled={isRewriting}
+                      className="btn btn-primary"
+                      style={{ width: '100%' }}
+                    >
+                      {isRewriting ? '🔄 Rewriting...' : '🚀 Transform Content'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Content Rewriting Results */}
+        {rewritingResult && (
+          <div className="result-card">
+            <h3>✨ Transformed Content</h3>
+            <div className="result-content">
+              <p><strong>Status:</strong> Content successfully transformed</p>
+              
+              {/* Original vs Rewritten Comparison */}
+              <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                  <h4>📝 Original Content</h4>
+                  <p><strong>Words:</strong> {rewritingResult.original_content?.word_count || 'N/A'}</p>
+                  <p><strong>Characters:</strong> {rewritingResult.original_content?.character_count || 'N/A'}</p>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '0.5rem', padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px' }}>
+                    <p style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{rewritingResult.original_content?.text}</p>
+                  </div>
+                </div>
+                
+                <div style={{ padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                  <h4>🎯 Transformed Content</h4>
+                  <p><strong>Words:</strong> {rewritingResult.rewritten_content?.word_count || 'N/A'}</p>
+                  <p><strong>Characters:</strong> {rewritingResult.rewritten_content?.character_count || 'N/A'}</p>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '0.5rem', padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px' }}>
+                    <p style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{rewritingResult.rewritten_content?.text}</p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Improvement Metrics */}
+              {rewritingResult.rewritten_content?.improvement_metrics && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
+                  <h4>📊 Improvement Metrics</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                    <p><strong>Word Count Change:</strong> {rewritingResult.rewritten_content.improvement_metrics.word_count_change} ({rewritingResult.rewritten_content.improvement_metrics.word_count_change_percent}%)</p>
+                    <p><strong>Complexity Improvement:</strong> {rewritingResult.rewritten_content.improvement_metrics.complexity_improvement}</p>
+                    <p><strong>Readability:</strong> {rewritingResult.rewritten_content.improvement_metrics.readability_improvement}</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Action Buttons */}
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
+                <button 
+                  onClick={analyzeContentSimilarity}
+                  disabled={isAnalyzing}
+                  className="btn btn-secondary"
+                >
+                  {isAnalyzing ? '🔍 Analyzing...' : '🔍 Analyze Similarity'}
+                </button>
+                <button 
+                  onClick={checkPlagiarism}
+                  disabled={isAnalyzing}
+                  className="btn btn-secondary"
+                >
+                  {isAnalyzing ? '🔍 Checking...' : '🔍 Check Plagiarism'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
