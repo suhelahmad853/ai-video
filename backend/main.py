@@ -65,6 +65,7 @@ async def root():
                 "transcription_status": "GET /transcription-status/{audio_filename}",
                 "extract_and_transcribe": "POST /extract-and-transcribe"
             },
+            
             "content_analysis": {
                 "analyze_content_structure": "POST /analyze-content-structure",
                 "transcribe_and_analyze": "POST /transcribe-and-analyze"
