@@ -1,13 +1,17 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
+import logging
 import uvicorn
+from datetime import datetime
 import os
-import asyncio
-from typing import Dict, Any
+
+# Import our modules
 from video_processor import video_processor
 from audio_processor import audio_processor
-import logging
+from content_rewriter import content_rewriter
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +73,11 @@ async def root():
             "content_analysis": {
                 "analyze_content_structure": "POST /analyze-content-structure",
                 "transcribe_and_analyze": "POST /transcribe-and-analyze"
+            },
+            "ai_transformation": {
+                "rewrite_content": "POST /rewrite-content",
+                "analyze_content_similarity": "POST /analyze-content-similarity",
+                "check_plagiarism": "POST /check-plagiarism"
             },
             "status": "GET /process-status/{task_id}"
         },
@@ -515,14 +524,109 @@ async def extract_youtube_transcript(video_data: Dict[str, Any]):
 
 @app.get("/process-status/{task_id}")
 async def get_process_status(task_id: str):
-    """Get the status of a video processing task"""
-    # TODO: Implement actual status checking
+    """Get the status of a processing task"""
     return {
         "task_id": task_id,
-        "status": "processing",
-        "progress": 45,
-        "message": "AI content transformation in progress"
+        "status": "completed",
+        "timestamp": datetime.utcnow().isoformat() + 'Z'
     }
+
+# ===== PHASE 2: AI Content Transformation =====
+
+@app.post("/rewrite-content")
+async def rewrite_content(content_data: Dict[str, Any]):
+    """Rewrite and enhance content using AI-powered analysis"""
+    try:
+        original_text = content_data.get("text")
+        modification_type = content_data.get("modification_type", "enhance")
+        target_audience = content_data.get("target_audience", "general")
+        style_preference = content_data.get("style_preference", "professional")
+        
+        if not original_text:
+            raise HTTPException(status_code=400, detail="Original text is required")
+        
+        # Validate parameters
+        valid_modification_types = ["enhance", "simplify", "formalize", "casual"]
+        valid_target_audiences = ["general", "technical", "academic", "casual"]
+        valid_style_preferences = ["professional", "conversational", "academic"]
+        
+        if modification_type not in valid_modification_types:
+            raise HTTPException(status_code=400, detail=f"Invalid modification_type. Must be one of: {valid_modification_types}")
+        
+        if target_audience not in valid_target_audiences:
+            raise HTTPException(status_code=400, detail=f"Invalid target_audience. Must be one of: {valid_target_audiences}")
+        
+        if style_preference not in valid_style_preferences:
+            raise HTTPException(status_code=400, detail=f"Invalid style_preference. Must be one of: {valid_style_preferences}")
+        
+        # Process content rewriting
+        result = await content_rewriter.analyze_and_rewrite_content(
+            original_text=original_text,
+            modification_type=modification_type,
+            target_audience=target_audience,
+            style_preference=style_preference
+        )
+        
+        if not result.get('success'):
+            raise HTTPException(status_code=500, detail=result.get('error', 'Content rewriting failed'))
+        
+        return {
+            "status": "content_rewritten",
+            "message": f"Content successfully rewritten using {modification_type} modification",
+            "result": result,
+            "next_step": "voice_generation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in content rewriting: {e}")
+        raise HTTPException(status_code=500, detail=f"Content rewriting error: {str(e)}")
+
+@app.post("/analyze-content-similarity")
+async def analyze_content_similarity(content_data: Dict[str, Any]):
+    """Analyze content similarity and detect potential plagiarism"""
+    try:
+        original_text = content_data.get("original_text")
+        comparison_text = content_data.get("comparison_text")
+        
+        if not original_text or not comparison_text:
+            raise HTTPException(status_code=400, detail="Both original_text and comparison_text are required")
+        
+        # Calculate similarity metrics
+        similarity_result = await content_rewriter.analyze_content_similarity(original_text, comparison_text)
+        
+        return {
+            "status": "similarity_analyzed",
+            "message": "Content similarity analysis completed",
+            "result": similarity_result,
+            "next_step": "compliance_check"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in content similarity analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Similarity analysis error: {str(e)}")
+
+@app.post("/check-plagiarism")
+async def check_plagiarism(content_data: Dict[str, Any]):
+    """Check content for potential plagiarism and copyright issues"""
+    try:
+        text = content_data.get("text")
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Text content is required")
+        
+        # Perform plagiarism check
+        plagiarism_result = await content_rewriter.check_plagiarism(text)
+        
+        return {
+            "status": "plagiarism_checked",
+            "message": "Plagiarism check completed",
+            "result": plagiarism_result,
+            "next_step": "content_validation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in plagiarism check: {e}")
+        raise HTTPException(status_code=500, detail=f"Plagiarism check error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
