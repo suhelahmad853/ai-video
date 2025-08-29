@@ -68,6 +68,19 @@ const VideoProcessor: React.FC = () => {
     backgroundMusicStyle: 'ambient'
   });
 
+  // Visual Generation State
+  const [isGeneratingVisuals, setIsGeneratingVisuals] = useState<boolean>(false);
+  const [visualProgress, setVisualProgress] = useState<string>('');
+  const [visualResult, setVisualResult] = useState<any>(null);
+  const [availableVisualTemplates, setAvailableVisualTemplates] = useState<any>(null);
+  const [visualOptions, setVisualOptions] = useState({
+    contentType: 'auto',
+    stylePreferences: {
+      colorScheme: 'professional',
+      fontSize: 36
+    }
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -527,9 +540,46 @@ const VideoProcessor: React.FC = () => {
     }
   };
 
+  const handleGenerateVisuals = async () => {
+    if (!rewritingResult?.rewritten_content?.text) {
+      alert('Please rewrite content first before generating visuals.');
+      return;
+    }
+
+    setIsGeneratingVisuals(true);
+    setVisualProgress('Initializing visual generation...');
+    
+    try {
+      const response = await axios.post(`${API_BASE_URL}/generate-visual-content`, {
+        text_content: rewritingResult.rewritten_content.text,
+        content_type: visualOptions.contentType,
+        style_preferences: visualOptions.stylePreferences
+      });
+      
+      setVisualResult(response.data);
+      setVisualProgress('Visual generation completed!');
+      
+    } catch (error: any) {
+      setVisualProgress('Error: ' + (error.response?.data?.detail || error.message));
+      console.error('Visual generation error:', error);
+    } finally {
+      setIsGeneratingVisuals(false);
+    }
+  };
+
+  const loadAvailableVisualTemplates = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/available-visual-templates`);
+      setAvailableVisualTemplates(response.data);
+    } catch (error: any) {
+      console.error('Error loading visual templates:', error);
+    }
+  };
+
   // Fetch available voices on component mount
   useEffect(() => {
     fetchAvailableVoices();
+    loadAvailableVisualTemplates();
   }, []);
 
   return (
@@ -621,7 +671,9 @@ const VideoProcessor: React.FC = () => {
                 <li>5. Transform Content: AI-powered content rewriting and enhancement</li>
                 <li>6. Analyze Similarity: Compare original vs. transformed content</li>
                 <li>7. Check Plagiarism: Ensure content uniqueness and compliance</li>
-                <li>8. Next: Voice generation and video creation (coming soon)</li>
+                <li>8. Voice Generation: Convert text to natural speech</li>
+                <li>9. Visual Generation: Create slides, images, and graphics</li>
+                <li>10. Next: Video composition and final export (coming soon)</li>
               </ul>
             </div>
           </div>
@@ -1624,6 +1676,205 @@ const VideoProcessor: React.FC = () => {
                   <li>Audio post-processing and enhancement</li>
                   <li>Video generation with visual content</li>
                   <li>Final video composition and output</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Visual Generation Section */}
+        {rewritingResult && (
+          <div className="result-card">
+            <h3>🎨 Visual Content Generation System</h3>
+            <div className="result-content">
+              <p><strong>Phase 2.3:</strong> Create visual content from your transformed text</p>
+              
+              {/* Visual Options */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                <h4>Visual Options</h4>
+                
+                {/* Content Type Selection */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label><strong>Content Type:</strong></label>
+                  <select 
+                    value={visualOptions.contentType}
+                    onChange={(e) => setVisualOptions(prev => ({ ...prev, contentType: e.target.value }))}
+                    style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                  >
+                    <option value="auto">Auto-detect (Recommended)</option>
+                    <option value="slide">Slides Only</option>
+                    <option value="image">Images Only</option>
+                    <option value="graphic">Graphics Only</option>
+                  </select>
+                  <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                    Auto-detect will choose the best visual type based on your content
+                  </p>
+                </div>
+                
+                {/* Style Preferences */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label><strong>Color Scheme:</strong></label>
+                    <select
+                      value={visualOptions.stylePreferences.colorScheme}
+                      onChange={(e) => setVisualOptions(prev => ({ 
+                        ...prev, 
+                        stylePreferences: { 
+                          ...prev.stylePreferences, 
+                          colorScheme: e.target.value 
+                        } 
+                      }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value="professional">Professional</option>
+                      <option value="modern">Modern</option>
+                      <option value="minimal">Minimal</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label><strong>Font Size:</strong></label>
+                    <select
+                      value={visualOptions.stylePreferences.fontSize}
+                      onChange={(e) => setVisualOptions(prev => ({ 
+                        ...prev, 
+                        stylePreferences: { 
+                          ...prev.stylePreferences, 
+                          fontSize: parseInt(e.target.value) 
+                        } 
+                      }))}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                    >
+                      <option value={18}>Small (18px)</option>
+                      <option value={24}>Medium (24px)</option>
+                      <option value={28}>Large (28px)</option>
+                      <option value={36}>Extra Large (36px)</option>
+                      <option value={48}>Title (48px)</option>
+                    </select>
+                  </div>
+                </div>
+                
+                {/* Available Templates Info */}
+                {availableVisualTemplates && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                    <h5 style={{ margin: '0 0 0.5rem 0', color: '#155724' }}>Available Templates:</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      <div>
+                        <strong>Slide Templates:</strong> {Object.keys(availableVisualTemplates.templates || {}).length}
+                      </div>
+                      <div>
+                        <strong>Color Schemes:</strong> {Object.keys(availableVisualTemplates.color_schemes || {}).length}
+                      </div>
+                      <div>
+                        <strong>Font Configs:</strong> {Object.keys(availableVisualTemplates.font_configs || {}).length}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Generate Button */}
+                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                  <button 
+                    onClick={handleGenerateVisuals}
+                    disabled={isGeneratingVisuals}
+                    className="btn btn-primary"
+                    style={{ padding: '0.75rem 2rem', fontSize: '1.1rem' }}
+                  >
+                    {isGeneratingVisuals ? '🎨 Generating...' : '🎨 Generate Visual Content'}
+                  </button>
+                </div>
+                
+                {/* Progress Indicator */}
+                {isGeneratingVisuals && visualProgress && (
+                  <div style={{ 
+                    marginTop: '1rem', 
+                    padding: '1rem', 
+                    backgroundColor: '#e3f2fd', 
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    border: '1px solid #2196f3'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <div style={{
+                        width: '20px',
+                        height: '20px',
+                        border: '2px solid #2196f3',
+                        borderTop: '2px solid #2196f3',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      <span style={{ fontWeight: 'bold', color: '#1976d2' }}>
+                        {visualProgress}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Visual Generation Results */}
+        {visualResult && (
+          <div className="result-card">
+            <h3>🎨 Generated Visual Content</h3>
+            <div className="result-content">
+              <p><strong>Status:</strong> Visual content successfully generated!</p>
+              
+              {/* Visual Statistics */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                <h4>Generation Summary</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <p><strong>Total Visuals:</strong> {visualResult.result?.total_visuals || 'N/A'}</p>
+                  <p><strong>Estimated Duration:</strong> {visualResult.result?.estimated_duration_minutes?.toFixed(1) || 'N/A'} minutes</p>
+                  <p><strong>Content Type:</strong> {visualResult.result?.content_type || 'Mixed (Auto-detected)'}</p>
+                  <p><strong>Optimization Applied:</strong> {visualResult.result?.optimization_applied ? 'Yes' : 'No'}</p>
+                </div>
+              </div>
+              
+              {/* Generated Visuals List */}
+              {visualResult.result?.visuals && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                  <h4>Generated Visuals</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {visualResult.result.visuals.map((visual: any, index: number) => (
+                      <div key={index} style={{ 
+                        padding: '0.5rem', 
+                        backgroundColor: 'white', 
+                        borderRadius: '4px',
+                        border: '1px solid #dee2e6'
+                      }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.9rem' }}>
+                          <span><strong>Type:</strong> {visual.content_type}</span>
+                          <span><strong>Duration:</strong> {visual.duration_seconds}s</span>
+                          <span><strong>Transition:</strong> {visual.transition_type}</span>
+                        </div>
+                        <p style={{ fontSize: '0.8rem', color: '#666', margin: '0.25rem 0 0 0' }}>
+                          <strong>Preview:</strong> {visual.text_content.length > 100 ? 
+                            visual.text_content.substring(0, 100).replace(/00:\d{2}:\d{2}\.\.\s*/g, '') + '...' : 
+                            visual.text_content.replace(/00:\d{2}:\d{2}\.\.\s*/g, '')
+                          }
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Next Steps */}
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#d1ecf1', borderRadius: '4px' }}>
+                <h4>🚀 Next Steps</h4>
+                <p>Your visual content has been generated! The next phase will be:</p>
+                <ul style={{ marginTop: '0.5rem', marginLeft: '1.5rem' }}>
+                  <li>Video composition and timeline creation</li>
+                  <li>Audio-visual synchronization</li>
+                  <li>Final video export and optimization</li>
                 </ul>
               </div>
             </div>

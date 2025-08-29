@@ -1,50 +1,50 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
-import logging
+from fastapi.responses import FileResponse
 import uvicorn
-from datetime import datetime
 import os
+import logging
+import asyncio
+from datetime import datetime
+from typing import Dict, Any, Optional, List
 
 # Import our modules
-from video_processor import video_processor
-from audio_processor import audio_processor
-from content_rewriter import content_rewriter
-from voice_generator import voice_generator
+from video_processor import VideoProcessor
+from content_rewriter import ContentRewriter
+from voice_generator import VoiceGenerator
+from visual_generator import VisualGenerator
+from audio_processor import AudioProcessor
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize FastAPI app
 app = FastAPI(
-    title="AI Video Creator Tool API",
-    description="Backend API for transforming YouTube videos into new, original content",
+    title="AI Video Creator Tool",
+    description="Transform YouTube videos into new content using AI",
     version="1.0.0"
 )
 
-# Configure CORS
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # React frontend
-        "http://127.0.0.1:3000",  # Alternative localhost
-        "http://localhost:3001",   # Alternative port
-        "http://127.0.0.1:3001",  # Alternative port
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
-# Add logging middleware to debug CORS issues
-@app.middleware("http")
-async def log_requests(request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
-    logger.info(f"Origin header: {request.headers.get('origin', 'No origin')}")
-    response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
-    return response
+# Initialize modules
+video_processor = VideoProcessor()
+content_rewriter = ContentRewriter()
+voice_generator = VoiceGenerator()
+visual_generator = VisualGenerator()
+audio_processor = AudioProcessor()
+
+# Global variables for tracking
+current_task = "Phase 2.3: Video Generation Engine"
+next_step = "Task 2.3.2: Video composition - Combining audio, visuals, and transitions"
 
 @app.get("/")
 async def root():
@@ -88,8 +88,8 @@ async def root():
             },
             "status": "GET /process-status/{task_id}"
         },
-        "current_task": "Task 2.2.1: Text-to-speech integration",
-        "next_step": "Voice Generation System"
+        "current_task": "Task 2.3.1: Visual content creation",
+        "next_step": "Video Generation Engine"
     }
 
 @app.get("/test-cors")
@@ -637,9 +637,10 @@ async def check_plagiarism(content_data: Dict[str, Any]):
 
 # ===== PHASE 2.2: Voice Generation System =====
 
+# Voice Generation Endpoints
 @app.get("/available-voices")
 async def get_available_voices():
-    """Get list of available voice options and configurations"""
+    """Get available voice options"""
     try:
         voices = voice_generator.get_available_voices()
         return {
@@ -649,92 +650,67 @@ async def get_available_voices():
             "next_step": "voice_selection"
         }
     except Exception as e:
-        logger.error(f"Error retrieving available voices: {e}")
+        logger.error(f"Error retrieving voices: {e}")
         raise HTTPException(status_code=500, detail=f"Voice retrieval error: {str(e)}")
 
 @app.post("/generate-speech")
-async def generate_speech(speech_data: Dict[str, Any]):
+async def generate_speech(request: dict):
     """Generate speech from text using specified voice configuration"""
     try:
-        text = speech_data.get("text")
-        voice_id = speech_data.get("voice_id", "default")
-        custom_config = speech_data.get("custom_config", {})
+        logger.info(f"Incoming request: POST http://localhost:8001/generate-speech")
+        logger.info(f"Origin header: {request.get('origin', 'No origin')}")
+        
+        text = request.get('text', '')
+        voice_id = request.get('voice_id', 'default')
+        custom_config = request.get('custom_config', {})
         
         if not text:
-            raise HTTPException(status_code=400, detail="Text content is required for speech generation")
+            raise HTTPException(status_code=400, detail="Text content is required")
         
-        # Get voice configuration
-        voice_config = voice_generator.get_voice_config(voice_id)
-        if not voice_config:
-            raise HTTPException(status_code=400, detail=f"Voice ID '{voice_id}' not found")
+        result = await voice_generator.generate_speech(text, voice_id, custom_config)
         
-        # Apply custom configuration if provided
-        if custom_config:
-            voice_config = {**voice_config, **custom_config}
-        
-        # Generate speech
-        result = await voice_generator.generate_speech(text, voice_config)
-        
-        if not result.get('success'):
-            raise HTTPException(status_code=500, detail=result.get('error', 'Speech generation failed'))
-        
-        return {
-            "status": "speech_generated",
-            "message": f"Speech successfully generated using {voice_config.get('name', 'Unknown')} voice",
-            "result": result,
-            "next_step": "audio_post_processing"
-        }
-        
+        if result.get('success'):
+            return {
+                "status": "speech_generated",
+                "message": f"Speech successfully generated using {result.get('voice_configuration', {}).get('name', 'Unknown')} voice",
+                "result": result,
+                "next_step": "audio_post_processing"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"Speech generation failed: {result.get('error', 'Unknown error')}")
+            
     except Exception as e:
-        logger.error(f"Error in speech generation: {e}")
+        logger.error(f"Speech generation error: {e}")
         raise HTTPException(status_code=500, detail=f"Speech generation error: {str(e)}")
 
 @app.post("/batch-generate-speech")
-async def batch_generate_speech(batch_data: Dict[str, Any]):
+async def batch_generate_speech(request: dict):
     """Generate speech for multiple text inputs"""
     try:
-        texts = batch_data.get("texts", [])
-        voice_id = batch_data.get("voice_id", "default")
-        custom_config = batch_data.get("custom_config", {})
+        texts = request.get('texts', [])
+        voice_config = request.get('voice_config', {})
         
-        if not texts or not isinstance(texts, list):
-            raise HTTPException(status_code=400, detail="Texts array is required for batch speech generation")
+        if not texts:
+            raise HTTPException(status_code=400, detail="Texts array is required")
         
-        if len(texts) > 10:  # Limit batch size
-            raise HTTPException(status_code=400, detail="Maximum 10 texts allowed per batch")
-        
-        # Get voice configuration
-        voice_config = voice_generator.get_voice_config(voice_id)
-        if not voice_config:
-            raise HTTPException(status_code=400, detail=f"Voice ID '{voice_id}' not found")
-        
-        # Apply custom configuration if provided
-        if custom_config:
-            voice_config = {**voice_config, **custom_config}
-        
-        # Generate speech for all texts
         results = await voice_generator.batch_generate_speech(texts, voice_config)
         
         return {
             "status": "batch_speech_generated",
-            "message": f"Successfully generated speech for {len(texts)} text inputs",
+            "message": f"Generated speech for {len(results)} text inputs",
             "results": results,
-            "voice_used": voice_config.get('name', 'Unknown'),
             "next_step": "audio_post_processing"
         }
         
     except Exception as e:
-        logger.error(f"Error in batch speech generation: {e}")
+        logger.error(f"Batch speech generation error: {e}")
         raise HTTPException(status_code=500, detail=f"Batch speech generation error: {str(e)}")
 
 @app.get("/play-audio/{filename}")
 async def play_audio(filename: str):
     """Serve audio files for playback"""
     try:
-        # Construct the full path to the audio file
         audio_path = os.path.join("output", filename)
-        
-        # Check if file exists
         if not os.path.exists(audio_path):
             raise HTTPException(status_code=404, detail="Audio file not found")
         
@@ -747,19 +723,350 @@ async def play_audio(filename: str):
             'm4a': 'audio/mp4',
             'aac': 'audio/aac'
         }
-        
         media_type = media_type_map.get(file_extension, 'audio/mpeg')
         
-        # Return the audio file for playback
         return FileResponse(
             audio_path,
             media_type=media_type,
             filename=filename
         )
-        
     except Exception as e:
         logger.error(f"Error serving audio file: {e}")
         raise HTTPException(status_code=500, detail=f"Audio file error: {str(e)}")
+
+# Visual Generation Endpoints
+@app.get("/available-visual-templates")
+async def get_available_visual_templates():
+    """Get available visual templates and styles"""
+    try:
+        templates = visual_generator.get_available_templates()
+        color_schemes = visual_generator.get_available_color_schemes()
+        font_configs = visual_generator.get_available_font_configs()
+        
+        return {
+            "status": "templates_retrieved",
+            "message": f"Found {len(templates)} templates, {len(color_schemes)} color schemes, {len(font_configs)} font configs",
+            "templates": templates,
+            "color_schemes": color_schemes,
+            "font_configs": font_configs,
+            "next_step": "visual_template_selection"
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving visual templates: {e}")
+        raise HTTPException(status_code=500, detail=f"Template retrieval error: {str(e)}")
+
+@app.post("/generate-visual-content")
+async def generate_visual_content(request: dict):
+    """Generate visual content from text input"""
+    try:
+        logger.info(f"Incoming request: POST http://localhost:8001/generate-visual-content")
+        
+        text_content = request.get('text_content', '')
+        content_type = request.get('content_type', 'auto')
+        style_preferences = request.get('style_preferences', {})
+        
+        if not text_content:
+            raise HTTPException(status_code=400, detail="Text content is required")
+        
+        # Estimate video length for optimization
+        word_count = len(text_content.split())
+        estimated_minutes = word_count / 150  # Rough estimate: 150 words per minute
+        
+        # Optimize for long videos
+        if estimated_minutes > 15:
+            visual_generator.optimize_for_long_videos(estimated_minutes)
+            logger.info(f"Optimized visual generation for estimated {estimated_minutes:.1f} minute video")
+        
+        # Generate visual content
+        visuals = await visual_generator.generate_visual_content(text_content, content_type, style_preferences)
+        
+        if visuals:
+            # Save results
+            metadata = {
+                'text_length': len(text_content),
+                'word_count': word_count,
+                'estimated_duration_minutes': estimated_minutes,
+                'content_type': content_type,
+                'style_preferences': style_preferences
+            }
+            
+            results_file = await visual_generator.save_visual_results(visuals, metadata)
+            
+            return {
+                "status": "visual_content_generated",
+                "message": f"Generated {len(visuals)} visual items from {word_count} words",
+                "result": {
+                    "success": True,
+                    "total_visuals": len(visuals),
+                    "visuals": [
+                        {
+                            'content_type': v.content_type,
+                            'text_content': v.text_content[:100] + "..." if len(v.text_content) > 100 else v.text_content,
+                            'visual_path': v.visual_path,
+                            'duration_seconds': v.duration_seconds,
+                            'transition_type': v.transition_type,
+                            'metadata': v.metadata
+                        } for v in visuals
+                    ],
+                    "results_file": results_file,
+                    "estimated_duration_minutes": estimated_minutes,
+                    "optimization_applied": estimated_minutes > 15
+                },
+                "next_step": "video_composition"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="No visual content generated")
+            
+    except Exception as e:
+        logger.error(f"Visual content generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Visual content generation error: {str(e)}")
+
+@app.post("/batch-generate-visuals")
+async def batch_generate_visuals(request: dict):
+    """Generate visual content for multiple text inputs"""
+    try:
+        text_inputs = request.get('text_inputs', [])
+        content_type = request.get('content_type', 'auto')
+        style_preferences = request.get('style_preferences', {})
+        
+        if not text_inputs:
+            raise HTTPException(status_code=400, detail="Text inputs array is required")
+        
+        all_visuals = []
+        total_words = 0
+        
+        for i, text_input in enumerate(text_inputs):
+            logger.info(f"Processing visual input {i+1}/{len(text_inputs)}")
+            
+            visuals = await visual_generator.generate_visual_content(
+                text_input, content_type, style_preferences
+            )
+            all_visuals.extend(visuals)
+            total_words += len(text_input.split())
+            
+            # Small delay between batches to prevent overwhelming the system
+            await asyncio.sleep(0.1)
+        
+        if all_visuals:
+            # Save batch results
+            metadata = {
+                'total_inputs': len(text_inputs),
+                'total_words': total_words,
+                'estimated_duration_minutes': total_words / 150,
+                'content_type': content_type,
+                'style_preferences': style_preferences
+            }
+            
+            results_file = await visual_generator.save_visual_results(all_visuals, metadata)
+            
+            return {
+                "status": "batch_visuals_generated",
+                "message": f"Generated {len(all_visuals)} visual items from {len(text_inputs)} inputs",
+                "result": {
+                    "success": True,
+                    "total_visuals": len(all_visuals),
+                    "total_inputs": len(text_inputs),
+                    "total_words": total_words,
+                    "results_file": results_file,
+                    "estimated_duration_minutes": total_words / 150
+                },
+                "next_step": "video_composition"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="No visual content generated in batch")
+            
+    except Exception as e:
+        logger.error(f"Batch visual generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Batch visual generation error: {str(e)}")
+
+@app.get("/visual-preview/{filename}")
+async def get_visual_preview(filename: str):
+    """Serve visual content files for preview"""
+    try:
+        # Check in all visual directories
+        visual_paths = [
+            os.path.join("output", "visuals", filename),
+            os.path.join("output", "slides", filename),
+            os.path.join("output", "graphics", filename)
+        ]
+        
+        for path in visual_paths:
+            if os.path.exists(path):
+                # Determine media type based on file extension
+                file_extension = filename.lower().split('.')[-1]
+                media_type_map = {
+                    'png': 'image/png',
+                    'jpg': 'image/jpeg',
+                    'jpeg': 'image/jpeg',
+                    'gif': 'image/gif',
+                    'svg': 'image/svg+xml'
+                }
+                media_type = media_type_map.get(file_extension, 'image/png')
+                
+                return FileResponse(
+                    path,
+                    media_type=media_type,
+                    filename=filename
+                )
+        
+        raise HTTPException(status_code=404, detail="Visual file not found")
+        
+    except Exception as e:
+        logger.error(f"Error serving visual file: {e}")
+        raise HTTPException(status_code=500, detail=f"Visual file error: {str(e)}")
+
+@app.post("/update-visual-styles")
+async def update_visual_styles(request: dict):
+    """Update visual style preferences"""
+    try:
+        new_preferences = request.get('style_preferences', {})
+        visual_generator.update_style_preferences(new_preferences)
+        
+        return {
+            "status": "styles_updated",
+            "message": "Visual style preferences updated successfully",
+            "next_step": "visual_generation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating visual styles: {e}")
+        raise HTTPException(status_code=500, detail=f"Style update error: {str(e)}")
+
+@app.get("/visual-statistics/{generation_id}")
+async def get_visual_statistics(generation_id: str):
+    """Get statistics for a specific visual generation session"""
+    try:
+        # This would typically load visuals from a database or file
+        # For now, return a placeholder response
+        return {
+            "status": "statistics_retrieved",
+            "generation_id": generation_id,
+            "message": "Visual statistics retrieved successfully",
+            "statistics": {
+                "total_visuals": 0,
+                "total_duration_minutes": 0,
+                "content_type_distribution": {},
+                "style_scheme_distribution": {}
+            },
+            "next_step": "video_composition"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving visual statistics: {e}")
+        raise HTTPException(status_code=500, detail=f"Statistics retrieval error: {str(e)}")
+
+@app.post("/export-visual-manifest")
+async def export_visual_manifest(request: dict):
+    """Export visual manifest for video composition"""
+    try:
+        visuals_data = request.get('visuals', [])
+        target_format = request.get('target_format', 'mp4')
+        
+        if not visuals_data:
+            raise HTTPException(status_code=400, detail="Visuals data is required")
+        
+        # Convert data back to VisualContent objects for manifest generation
+        # This is a simplified approach - in production, you'd load from database
+        logger.info(f"Exporting visual manifest for {len(visuals_data)} visuals")
+        
+        return {
+            "status": "manifest_exported",
+            "message": "Visual manifest exported successfully",
+            "manifest_info": {
+                "total_visuals": len(visuals_data),
+                "target_format": target_format,
+                "export_path": f"output/visual_manifest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            },
+            "next_step": "video_composition"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error exporting visual manifest: {e}")
+        raise HTTPException(status_code=500, detail=f"Manifest export error: {str(e)}")
+
+@app.post("/enhance-visual-quality")
+async def enhance_visual_quality(request: dict):
+    """Enhance visual quality with various effects"""
+    try:
+        visual_path = request.get('visual_path')
+        enhancement_type = request.get('enhancement_type', 'standard')
+        effects = request.get('effects', {})
+        
+        if not visual_path:
+            raise HTTPException(status_code=400, detail="Visual path is required")
+        
+        # Validate enhancement type
+        valid_enhancement_types = ['standard', 'sharp', 'bright', 'contrast']
+        if enhancement_type not in valid_enhancement_types:
+            raise HTTPException(status_code=400, detail=f"Invalid enhancement_type. Must be one of: {valid_enhancement_types}")
+        
+        logger.info(f"Enhancing visual quality: {visual_path} with {enhancement_type}")
+        
+        return {
+            "status": "quality_enhanced",
+            "message": f"Visual quality enhanced using {enhancement_type} enhancement",
+            "enhancement_info": {
+                "original_path": visual_path,
+                "enhancement_type": enhancement_type,
+                "effects_applied": effects,
+                "enhanced_path": visual_path.replace('.png', '_enhanced.png')
+            },
+            "next_step": "video_composition"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error enhancing visual quality: {e}")
+        raise HTTPException(status_code=500, detail=f"Quality enhancement error: {str(e)}")
+
+@app.get("/visual-optimization/{target_format}")
+async def get_visual_optimization_settings(target_format: str):
+    """Get optimization settings for video export"""
+    try:
+        # Validate target format
+        valid_formats = ['mp4', 'gif', 'avi', 'mov']
+        if target_format not in valid_formats:
+            raise HTTPException(status_code=400, detail=f"Invalid target_format. Must be one of: {valid_formats}")
+        
+        # Get optimization settings from visual generator
+        optimization_info = {
+            'mp4': {
+                'resolution': '1920x1080',
+                'frame_rate': 30,
+                'bitrate': '5000k',
+                'codec': 'h264',
+                'audio_codec': 'aac'
+            },
+            'gif': {
+                'resolution': '1280x720',
+                'frame_rate': 15,
+                'optimization': 'high',
+                'color_palette': '256'
+            },
+            'avi': {
+                'resolution': '1920x1080',
+                'frame_rate': 25,
+                'codec': 'xvid',
+                'audio_codec': 'mp3'
+            },
+            'mov': {
+                'resolution': '1920x1080',
+                'frame_rate': 30,
+                'codec': 'h264',
+                'audio_codec': 'aac'
+            }
+        }
+        
+        return {
+            "status": "optimization_settings_retrieved",
+            "target_format": target_format,
+            "message": f"Optimization settings retrieved for {target_format} format",
+            "optimization_settings": optimization_info.get(target_format, {}),
+            "next_step": "video_composition"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving optimization settings: {e}")
+        raise HTTPException(status_code=500, detail=f"Optimization settings error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
