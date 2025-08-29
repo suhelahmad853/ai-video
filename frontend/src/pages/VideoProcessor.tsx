@@ -1067,22 +1067,38 @@ const VideoProcessor: React.FC = () => {
               {/* Voice Selection */}
               <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
                 <h4>Voice Options</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label><strong>Voice Type:</strong></label>
-                    <select 
-                      value={voiceOptions.voiceId}
-                      onChange={(e) => setVoiceOptions(prev => ({ ...prev, voiceId: e.target.value }))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
-                    >
-                      {availableVoices.map(voice => (
-                        <option key={voice.id} value={voice.id}>
-                          {voice.name} - {voice.description}
-                        </option>
-                      ))}
-                    </select>
+                
+                {/* Voice Type Selection */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label><strong>Voice Type:</strong></label>
+                  <select 
+                    value={voiceOptions.voiceId}
+                    onChange={(e) => setVoiceOptions(prev => ({ ...prev, voiceId: e.target.value }))}
+                    style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                  >
+                    {availableVoices.map(voice => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.name} - {voice.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Voice Characteristics Display */}
+                {availableVoices.find(v => v.id === voiceOptions.voiceId) && (
+                  <div style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px' }}>
+                    <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>Voice Characteristics:</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      <span><strong>Gender:</strong> {availableVoices.find(v => v.id === voiceOptions.voiceId)?.gender}</span>
+                      <span><strong>Emotion:</strong> {availableVoices.find(v => v.id === voiceOptions.voiceId)?.emotion}</span>
+                      <span><strong>Age Group:</strong> {availableVoices.find(v => v.id === voiceOptions.voiceId)?.age_group}</span>
+                      <span><strong>Accent:</strong> {availableVoices.find(v => v.id === voiceOptions.voiceId)?.accent}</span>
+                    </div>
                   </div>
-                  
+                )}
+                
+                {/* Voice Customization Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label><strong>Speed:</strong></label>
                     <input

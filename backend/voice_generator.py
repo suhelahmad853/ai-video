@@ -40,7 +40,9 @@ class VoiceGenerator:
                 "pitch": 1.0,
                 "volume": 1.0,
                 "gender": "neutral",
-                "accent": "standard"
+                "accent": "standard",
+                "emotion": "neutral",
+                "age_group": "adult"
             },
             "professional_male": {
                 "name": "Professional Male",
@@ -49,7 +51,9 @@ class VoiceGenerator:
                 "pitch": 0.8,
                 "volume": 1.0,
                 "gender": "male",
-                "accent": "standard"
+                "accent": "standard",
+                "emotion": "confident",
+                "age_group": "adult"
             },
             "professional_female": {
                 "name": "Professional Female",
@@ -58,7 +62,9 @@ class VoiceGenerator:
                 "pitch": 1.1,
                 "volume": 1.0,
                 "gender": "female",
-                "accent": "standard"
+                "accent": "standard",
+                "emotion": "professional",
+                "age_group": "adult"
             },
             "casual_male": {
                 "name": "Casual Male",
@@ -67,7 +73,9 @@ class VoiceGenerator:
                 "pitch": 1.0,
                 "volume": 0.9,
                 "gender": "male",
-                "accent": "casual"
+                "accent": "casual",
+                "emotion": "friendly",
+                "age_group": "young_adult"
             },
             "casual_female": {
                 "name": "Casual Female",
@@ -76,7 +84,9 @@ class VoiceGenerator:
                 "pitch": 1.05,
                 "volume": 0.95,
                 "gender": "female",
-                "accent": "casual"
+                "accent": "casual",
+                "emotion": "warm",
+                "age_group": "young_adult"
             },
             "academic": {
                 "name": "Academic Voice",
@@ -85,7 +95,86 @@ class VoiceGenerator:
                 "pitch": 1.0,
                 "volume": 1.0,
                 "gender": "neutral",
-                "accent": "academic"
+                "accent": "academic",
+                "emotion": "instructive",
+                "age_group": "adult"
+            },
+            "storyteller_male": {
+                "name": "Storyteller Male",
+                "description": "Expressive male voice for narrative content",
+                "speed": 0.95,
+                "pitch": 0.9,
+                "volume": 1.0,
+                "gender": "male",
+                "accent": "narrative",
+                "emotion": "expressive",
+                "age_group": "adult"
+            },
+            "storyteller_female": {
+                "name": "Storyteller Female",
+                "description": "Engaging female voice for storytelling",
+                "speed": 1.0,
+                "pitch": 1.15,
+                "volume": 0.95,
+                "gender": "female",
+                "accent": "narrative",
+                "emotion": "engaging",
+                "age_group": "adult"
+            },
+            "news_anchor": {
+                "name": "News Anchor",
+                "description": "Clear, authoritative voice for news content",
+                "speed": 0.9,
+                "pitch": 1.0,
+                "volume": 1.0,
+                "gender": "neutral",
+                "accent": "broadcast",
+                "emotion": "authoritative",
+                "age_group": "adult"
+            },
+            "youth_male": {
+                "name": "Youth Male",
+                "description": "Energetic young male voice for modern content",
+                "speed": 1.2,
+                "pitch": 1.1,
+                "volume": 1.0,
+                "gender": "male",
+                "accent": "modern",
+                "emotion": "energetic",
+                "age_group": "teen"
+            },
+            "youth_female": {
+                "name": "Youth Female",
+                "description": "Vibrant young female voice for contemporary content",
+                "speed": 1.15,
+                "pitch": 1.2,
+                "volume": 0.95,
+                "gender": "female",
+                "accent": "modern",
+                "emotion": "vibrant",
+                "age_group": "teen"
+            },
+            "elder_male": {
+                "name": "Elder Male",
+                "description": "Wise, experienced male voice for mature content",
+                "speed": 0.8,
+                "pitch": 0.7,
+                "volume": 0.9,
+                "gender": "male",
+                "accent": "traditional",
+                "emotion": "wise",
+                "age_group": "senior"
+            },
+            "elder_female": {
+                "name": "Elder Female",
+                "description": "Gentle, experienced female voice for mature content",
+                "speed": 0.85,
+                "pitch": 0.9,
+                "volume": 0.9,
+                "gender": "female",
+                "accent": "traditional",
+                "emotion": "gentle",
+                "age_group": "senior"
             }
         }
     
@@ -239,15 +328,42 @@ class VoiceGenerator:
             # Initialize the TTS engine
             engine = pyttsx3.init()
             
-            # Configure voice properties
-            engine.setProperty('rate', int(200 * voice_config.get('speed', 1.0)))  # Speed
-            engine.setProperty('volume', voice_config.get('volume', 1.0))  # Volume
+            # Configure voice properties with enhanced realism
+            base_rate = 200
+            speed_multiplier = voice_config.get('speed', 1.0)
             
-            # Get available voices and select male voice if available
+            # Apply emotion-based speed adjustments
+            emotion = voice_config.get('emotion', 'neutral')
+            if emotion == 'energetic':
+                speed_multiplier *= 1.2
+            elif emotion == 'wise':
+                speed_multiplier *= 0.8
+            elif emotion == 'expressive':
+                speed_multiplier *= 1.1
+            
+            engine.setProperty('rate', int(base_rate * speed_multiplier))
+            engine.setProperty('volume', voice_config.get('volume', 1.0))
+            
+            # Enhanced voice selection based on age and gender
             voices = engine.getProperty('voices')
-            male_voices = [v for v in voices if 'male' in v.name.lower() or 'david' in v.name.lower()]
-            if male_voices:
-                engine.setProperty('voice', male_voices[0].id)
+            selected_voice = None
+            
+            if voice_config.get('gender') == 'male':
+                if voice_config.get('age_group') == 'teen':
+                    # Look for younger male voices
+                    male_voices = [v for v in voices if 'male' in v.name.lower() and 'david' in v.name.lower()]
+                elif voice_config.get('age_group') == 'senior':
+                    # Look for older male voices
+                    male_voices = [v for v in voices if 'male' in v.name.lower() and 'james' in v.name.lower()]
+                else:
+                    # Standard adult male voice
+                    male_voices = [v for v in voices if 'male' in v.name.lower()]
+                
+                if male_voices:
+                    selected_voice = male_voices[0].id
+            
+            if selected_voice:
+                engine.setProperty('voice', selected_voice)
             
             # Save to file
             engine.save_to_file(text, file_path)
@@ -264,8 +380,16 @@ class VoiceGenerator:
         try:
             from gtts import gTTS
             
-            # Create gTTS object
-            tts = gTTS(text=text, lang='en', slow=False)
+            # Enhanced text processing for better speech quality
+            processed_text = self._enhance_text_for_speech(text, voice_config)
+            
+            # Create gTTS object with enhanced settings
+            tts = gTTS(
+                text=processed_text, 
+                lang='en', 
+                slow=False,
+                lang_check=True
+            )
             
             # Save to file
             tts.save(file_path)
@@ -281,15 +405,21 @@ class VoiceGenerator:
         try:
             import edge_tts
             
-            # Select voice based on configuration
-            voice = "en-US-AriaNeural"  # Default female voice
-            if voice_config.get('gender') == 'male':
-                voice = "en-US-GuyNeural"
-            elif voice_config.get('accent') == 'academic':
-                voice = "en-US-JennyNeural"
+            # Enhanced voice selection based on emotion and age
+            voice = self._select_edge_tts_voice(voice_config)
+            
+            # Enhanced text processing
+            processed_text = self._enhance_text_for_speech(text, voice_config)
+            
+            # Create communicate object with enhanced settings
+            communicate = edge_tts.Communicate(
+                processed_text, 
+                voice,
+                rate=f"{int((voice_config.get('speed', 1.0) - 1.0) * 100)}%",
+                volume=f"{int((voice_config.get('volume', 1.0) - 1.0) * 100)}%"
+            )
             
             # Generate speech
-            communicate = edge_tts.Communicate(text, voice)
             await communicate.save(file_path)
             
             return file_path
@@ -398,6 +528,99 @@ class VoiceGenerator:
         except Exception as e:
             logger.error(f"Error in batch speech generation: {e}")
             return []
+    
+    def _select_edge_tts_voice(self, voice_config: Dict) -> str:
+        """Select the most appropriate edge-tts voice based on configuration"""
+        try:
+            gender = voice_config.get('gender', 'neutral')
+            emotion = voice_config.get('emotion', 'neutral')
+            age_group = voice_config.get('age_group', 'adult')
+            accent = voice_config.get('accent', 'standard')
+            
+            # Voice mapping based on characteristics
+            voice_mapping = {
+                'male': {
+                    'teen': 'en-US-DavisNeural',
+                    'adult': 'en-US-GuyNeural',
+                    'senior': 'en-US-JasonNeural'
+                },
+                'female': {
+                    'teen': 'en-US-JennyNeural',
+                    'adult': 'en-US-AriaNeural',
+                    'senior': 'en-US-JennyNeural'
+                },
+                'neutral': {
+                    'adult': 'en-US-AriaNeural',
+                    'teen': 'en-US-JennyNeural',
+                    'senior': 'en-US-JennyNeural'
+                }
+            }
+            
+            # Select base voice
+            base_voice = voice_mapping.get(gender, {}).get(age_group, 'en-US-AriaNeural')
+            
+            # Apply emotion-specific adjustments
+            if emotion == 'energetic':
+                base_voice = 'en-US-JennyNeural'  # More energetic voice
+            elif emotion == 'wise':
+                base_voice = 'en-US-JasonNeural'  # Deeper, wiser voice
+            elif emotion == 'expressive':
+                base_voice = 'en-US-AriaNeural'  # Most expressive voice
+            
+            # Apply accent-specific adjustments
+            if accent == 'academic':
+                base_voice = 'en-US-JennyNeural'  # Clear academic voice
+            elif accent == 'broadcast':
+                base_voice = 'en-US-AriaNeural'  # Professional broadcast voice
+            elif accent == 'narrative':
+                base_voice = 'en-US-AriaNeural'  # Storytelling voice
+            
+            return base_voice
+            
+        except Exception as e:
+            logger.error(f"Error selecting edge-tts voice: {e}")
+            return "en-US-AriaNeural"  # Default fallback
+    
+    def _enhance_text_for_speech(self, text: str, voice_config: Dict) -> str:
+        """Enhance text for better speech quality based on voice characteristics"""
+        try:
+            enhanced_text = text
+            
+            # Apply emotion-based text enhancements
+            emotion = voice_config.get('emotion', 'neutral')
+            if emotion == 'energetic':
+                # Add exclamation marks for energy
+                enhanced_text = re.sub(r'([.!?])\s+([A-Z])', r'\1! \2', enhanced_text)
+            elif emotion == 'wise':
+                # Add pauses for wisdom
+                enhanced_text = re.sub(r'([.!?])\s+([A-Z])', r'\1... \2', enhanced_text)
+            elif emotion == 'expressive':
+                # Add emphasis markers
+                enhanced_text = re.sub(r'\b(important|key|crucial)\b', r'*important*', enhanced_text, flags=re.IGNORECASE)
+            
+            # Apply age-group specific enhancements
+            age_group = voice_config.get('age_group', 'adult')
+            if age_group == 'teen':
+                # Add modern language patterns
+                enhanced_text = re.sub(r'\b(very|really)\b', r'super', enhanced_text, flags=re.IGNORECASE)
+            elif age_group == 'senior':
+                # Add traditional language patterns
+                enhanced_text = re.sub(r'\b(very|really)\b', r'quite', enhanced_text, flags=re.IGNORECASE)
+            
+            # Apply accent-specific enhancements
+            accent = voice_config.get('accent', 'standard')
+            if accent == 'academic':
+                # Add academic language structure
+                enhanced_text = re.sub(r'\b(but|however)\b', r'however', enhanced_text, flags=re.IGNORECASE)
+            elif accent == 'broadcast':
+                # Add broadcast language patterns
+                enhanced_text = re.sub(r'\b(and)\b', r'as well as', enhanced_text, flags=re.IGNORECASE)
+            
+            return enhanced_text
+            
+        except Exception as e:
+            logger.error(f"Error enhancing text for speech: {e}")
+            return text
 
 # Create global instance
 voice_generator = VoiceGenerator() 
