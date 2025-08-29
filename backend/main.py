@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import logging
@@ -12,6 +12,7 @@ import os
 from video_processor import video_processor
 from audio_processor import audio_processor
 from content_rewriter import content_rewriter
+from voice_generator import voice_generator
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +80,16 @@ async def root():
                 "analyze_content_similarity": "POST /analyze-content-similarity",
                 "check_plagiarism": "POST /check-plagiarism"
             },
+            "voice_generation": {
+                "generate_speech": "POST /generate-speech",
+                "get_available_voices": "GET /available-voices",
+                "batch_generate_speech": "POST /batch-generate-speech",
+                "play_audio": "GET /play-audio/{filename}"
+            },
             "status": "GET /process-status/{task_id}"
         },
-        "current_task": "Task 1.3.2: Content Structure Analysis",
-        "next_step": "AI Content Transformation"
+        "current_task": "Task 2.2.1: Text-to-speech integration",
+        "next_step": "Voice Generation System"
     }
 
 @app.get("/test-cors")
@@ -627,6 +634,120 @@ async def check_plagiarism(content_data: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Error in plagiarism check: {e}")
         raise HTTPException(status_code=500, detail=f"Plagiarism check error: {str(e)}")
+
+# ===== PHASE 2.2: Voice Generation System =====
+
+@app.get("/available-voices")
+async def get_available_voices():
+    """Get list of available voice options and configurations"""
+    try:
+        voices = voice_generator.get_available_voices()
+        return {
+            "status": "voices_retrieved",
+            "message": f"Found {len(voices)} available voice options",
+            "voices": voices,
+            "next_step": "voice_selection"
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving available voices: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice retrieval error: {str(e)}")
+
+@app.post("/generate-speech")
+async def generate_speech(speech_data: Dict[str, Any]):
+    """Generate speech from text using specified voice configuration"""
+    try:
+        text = speech_data.get("text")
+        voice_id = speech_data.get("voice_id", "default")
+        custom_config = speech_data.get("custom_config", {})
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Text content is required for speech generation")
+        
+        # Get voice configuration
+        voice_config = voice_generator.get_voice_config(voice_id)
+        if not voice_config:
+            raise HTTPException(status_code=400, detail=f"Voice ID '{voice_id}' not found")
+        
+        # Apply custom configuration if provided
+        if custom_config:
+            voice_config = {**voice_config, **custom_config}
+        
+        # Generate speech
+        result = await voice_generator.generate_speech(text, voice_config)
+        
+        if not result.get('success'):
+            raise HTTPException(status_code=500, detail=result.get('error', 'Speech generation failed'))
+        
+        return {
+            "status": "speech_generated",
+            "message": f"Speech successfully generated using {voice_config.get('name', 'Unknown')} voice",
+            "result": result,
+            "next_step": "audio_post_processing"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in speech generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Speech generation error: {str(e)}")
+
+@app.post("/batch-generate-speech")
+async def batch_generate_speech(batch_data: Dict[str, Any]):
+    """Generate speech for multiple text inputs"""
+    try:
+        texts = batch_data.get("texts", [])
+        voice_id = batch_data.get("voice_id", "default")
+        custom_config = batch_data.get("custom_config", {})
+        
+        if not texts or not isinstance(texts, list):
+            raise HTTPException(status_code=400, detail="Texts array is required for batch speech generation")
+        
+        if len(texts) > 10:  # Limit batch size
+            raise HTTPException(status_code=400, detail="Maximum 10 texts allowed per batch")
+        
+        # Get voice configuration
+        voice_config = voice_generator.get_voice_config(voice_id)
+        if not voice_config:
+            raise HTTPException(status_code=400, detail=f"Voice ID '{voice_id}' not found")
+        
+        # Apply custom configuration if provided
+        if custom_config:
+            voice_config = {**voice_config, **custom_config}
+        
+        # Generate speech for all texts
+        results = await voice_generator.batch_generate_speech(texts, voice_config)
+        
+        return {
+            "status": "batch_speech_generated",
+            "message": f"Successfully generated speech for {len(texts)} text inputs",
+            "results": results,
+            "voice_used": voice_config.get('name', 'Unknown'),
+            "next_step": "audio_post_processing"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in batch speech generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Batch speech generation error: {str(e)}")
+
+@app.get("/play-audio/{filename}")
+async def play_audio(filename: str):
+    """Serve audio files for playback"""
+    try:
+        # Construct the full path to the audio file
+        audio_path = os.path.join("output", filename)
+        
+        # Check if file exists
+        if not os.path.exists(audio_path):
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        # Return the audio file for playback
+        return FileResponse(
+            audio_path,
+            media_type="audio/mpeg",
+            filename=filename
+        )
+        
+    except Exception as e:
+        logger.error(f"Error serving audio file: {e}")
+        raise HTTPException(status_code=500, detail=f"Audio file error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
