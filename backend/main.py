@@ -738,10 +738,22 @@ async def play_audio(filename: str):
         if not os.path.exists(audio_path):
             raise HTTPException(status_code=404, detail="Audio file not found")
         
+        # Determine media type based on file extension
+        file_extension = filename.lower().split('.')[-1]
+        media_type_map = {
+            'mp3': 'audio/mpeg',
+            'wav': 'audio/wav',
+            'ogg': 'audio/ogg',
+            'm4a': 'audio/mp4',
+            'aac': 'audio/aac'
+        }
+        
+        media_type = media_type_map.get(file_extension, 'audio/mpeg')
+        
         # Return the audio file for playback
         return FileResponse(
             audio_path,
-            media_type="audio/mpeg",
+            media_type=media_type,
             filename=filename
         )
         

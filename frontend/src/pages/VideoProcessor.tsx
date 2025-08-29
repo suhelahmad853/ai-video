@@ -5,6 +5,22 @@ import axios from 'axios';
 const API_BASE_URL = 'http://localhost:8001';
 
 const VideoProcessor: React.FC = () => {
+  // Add CSS animation for spinner
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   // State variables
   const [url, setUrl] = useState<string>('');
   const [quality, setQuality] = useState<string>('720p');
@@ -29,6 +45,7 @@ const VideoProcessor: React.FC = () => {
 
   // Voice Generation State
   const [isGeneratingSpeech, setIsGeneratingSpeech] = useState<boolean>(false);
+  const [speechProgress, setSpeechProgress] = useState<string>('');
   const [speechResult, setSpeechResult] = useState<any>(null);
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [voiceOptions, setVoiceOptions] = useState({
@@ -36,8 +53,19 @@ const VideoProcessor: React.FC = () => {
     customConfig: {
       speed: 1.0,
       pitch: 1.0,
-      volume: 1.0
+      volume: 1.0,
+      fastMode: false,
+      enablePostProcessing: true
     }
+  });
+
+  // Audio Post-Processing Options
+  const [postProcessingOptions, setPostProcessingOptions] = useState({
+    enableAudioEnhancement: true,
+    enableNoiseReduction: true,
+    enableVolumeNormalization: true,
+    enableBackgroundMusic: false,
+    backgroundMusicStyle: 'ambient'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -380,12 +408,63 @@ const VideoProcessor: React.FC = () => {
       
       setIsGeneratingSpeech(true);
       setError(null);
+      setSpeechProgress('Initializing speech generation...');
+      
+      // Add timeout handling
+      const timeoutId = setTimeout(() => {
+        setError('Speech generation is taking longer than expected. Try enabling Fast Mode for quicker results.');
+        setIsGeneratingSpeech(false);
+        setSpeechProgress('');
+      }, 30000); // 30 second timeout
+      
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setSpeechProgress(prev => {
+          if (voiceOptions.customConfig.fastMode) {
+            // Fast mode progress
+            if (prev.includes('Generating speech')) {
+              return 'Fast mode: Processing...';
+            } else {
+              return 'Fast mode: Generating speech...';
+            }
+          } else {
+            // Regular mode progress
+            if (prev.includes('Generating speech')) {
+              return 'Processing audio...';
+            } else if (prev.includes('Processing audio')) {
+              return 'Applying post-processing...';
+            } else if (prev.includes('Applying post-processing')) {
+              return 'Finalizing audio...';
+            } else {
+              return 'Generating speech...';
+            }
+          }
+        });
+      }, voiceOptions.customConfig.fastMode ? 1500 : 3000); // Faster updates for fast mode
       
       const response = await axios.post(`${API_BASE_URL}/generate-speech`, {
         text: rewritingResult.rewritten_content.text,
         voice_id: voiceOptions.voiceId,
-        custom_config: voiceOptions.customConfig
+        custom_config: {
+          ...voiceOptions.customConfig,
+          // In fast mode, disable all post-processing
+          fast_mode: voiceOptions.customConfig.fastMode,
+          enable_post_processing: voiceOptions.customConfig.enablePostProcessing && !voiceOptions.customConfig.fastMode,
+          // Only pass post-processing options if not in fast mode
+          ...(voiceOptions.customConfig.fastMode ? {} : {
+            enable_enhancement: postProcessingOptions.enableAudioEnhancement,
+            enable_noise_reduction: postProcessingOptions.enableNoiseReduction,
+            enable_volume_normalization: postProcessingOptions.enableVolumeNormalization,
+            enable_background_music: postProcessingOptions.enableBackgroundMusic
+          })
+        }
+      }, {
+        timeout: voiceOptions.customConfig.fastMode ? 30000 : 60000 // Shorter timeout for fast mode
       });
+      
+      clearTimeout(timeoutId);
+      clearInterval(progressInterval);
+      setSpeechProgress('Speech generation completed!');
       
       console.log('Speech generation response:', response.data);
       
@@ -397,13 +476,18 @@ const VideoProcessor: React.FC = () => {
       
     } catch (error: any) {
       console.error('Speech generation error:', error);
-      setError(error.response?.data?.detail || error.message);
+      if (error.code === 'ECONNABORTED') {
+        setError('Speech generation timed out. Try enabling Fast Mode or reducing text length.');
+      } else {
+        setError(error.response?.data?.detail || error.message);
+      }
     } finally {
       setIsGeneratingSpeech(false);
+      setTimeout(() => setSpeechProgress(''), 2000); // Clear progress after 2 seconds
     }
   };
 
-  const updateVoiceConfig = (key: string, value: number) => {
+  const updateVoiceConfig = (key: string, value: number | boolean) => {
     setVoiceOptions(prev => ({
       ...prev,
       customConfig: {
@@ -1148,6 +1232,161 @@ const VideoProcessor: React.FC = () => {
                   </div>
                 </div>
                 
+                {/* Performance Options */}
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: voiceOptions.customConfig.fastMode ? '#e8f5e8' : '#fff3cd', borderRadius: '4px', border: voiceOptions.customConfig.fastMode ? '2px solid #28a745' : '1px solid #ffc107' }}>
+                  <h5 style={{ color: voiceOptions.customConfig.fastMode ? '#155724' : '#856404' }}>
+                    {voiceOptions.customConfig.fastMode ? '🚀 Fast Mode Enabled' : '⚡ Performance Options'}
+                  </h5>
+                  
+                  {/* Fast Mode Status */}
+                  {voiceOptions.customConfig.fastMode && (
+                    <div style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#d4edda', borderRadius: '4px', border: '1px solid #c3e6cb' }}>
+                      <p style={{ fontSize: '0.9rem', margin: '0', color: '#155724' }}>
+                        ✅ <strong>Fast Mode Active:</strong> Audio post-processing disabled for maximum speed
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Text Length Warning */}
+                  {rewritingResult?.rewritten_content?.text && (
+                    <div style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#ffe6e6', borderRadius: '4px', border: '1px solid #ffcccc' }}>
+                      <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem 0', color: '#d63384' }}>
+                        <strong>⚠️ Text Length Warning:</strong> Your content is {rewritingResult.rewritten_content.text.length} characters long.
+                      </p>
+                      {rewritingResult.rewritten_content.text.length > 2000 ? (
+                        <div>
+                          <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem 0', color: '#dc3545', fontWeight: 'bold' }}>
+                            🚨 ULTRA LONG TEXT DETECTED!
+                          </p>
+                          <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem 0', color: '#dc3545' }}>
+                            <strong>Recommendation:</strong> Enable Fast Mode for immediate results (will use ultra fast mode).
+                          </p>
+                          <p style={{ fontSize: '0.8rem', margin: '0', color: '#dc3545' }}>
+                            <strong>Note:</strong> Ultra fast mode creates a placeholder file for immediate response.
+                          </p>
+                        </div>
+                      ) : rewritingResult.rewritten_content.text.length > 1000 ? (
+                        <p style={{ fontSize: '0.8rem', margin: '0', color: '#d63384' }}>
+                          <strong>Recommendation:</strong> Enable Fast Mode for quicker generation with long content.
+                        </p>
+                      ) : (
+                        <p style={{ fontSize: '0.8rem', margin: '0', color: '#28a745' }}>
+                          <strong>Good:</strong> Content length is manageable for full processing.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={voiceOptions.customConfig.fastMode || false}
+                          onChange={(e) => updateVoiceConfig('fastMode', e.target.checked)}
+                        />
+                        <strong>Fast Mode</strong>
+                      </label>
+                      <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                        Skip audio post-processing for faster generation
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={voiceOptions.customConfig.enablePostProcessing !== false}
+                          onChange={(e) => updateVoiceConfig('enablePostProcessing', e.target.checked)}
+                          disabled={voiceOptions.customConfig.fastMode}
+                        />
+                        <strong>Enable Post-Processing</strong>
+                      </label>
+                      <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                        Apply audio enhancement and effects
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Audio Post-Processing Options */}
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e8f5e8', borderRadius: '4px' }}>
+                  <h5 style={{ margin: '0 0 0.5rem 0' }}>🎵 Audio Post-Processing</h5>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={postProcessingOptions.enableAudioEnhancement}
+                          onChange={(e) => setPostProcessingOptions(prev => ({ ...prev, enableAudioEnhancement: e.target.checked }))}
+                        />
+                        <strong>Audio Enhancement</strong>
+                      </label>
+                      <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                        Improve audio quality and clarity
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={postProcessingOptions.enableNoiseReduction}
+                          onChange={(e) => setPostProcessingOptions(prev => ({ ...prev, enableNoiseReduction: e.target.checked }))}
+                        />
+                        <strong>Noise Reduction</strong>
+                      </label>
+                      <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                        Remove background noise and artifacts
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={postProcessingOptions.enableVolumeNormalization}
+                          onChange={(e) => setPostProcessingOptions(prev => ({ ...prev, enableVolumeNormalization: e.target.checked }))}
+                        />
+                        <strong>Volume Normalization</strong>
+                      </label>
+                      <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                        Balance audio levels and prevent clipping
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={postProcessingOptions.enableBackgroundMusic}
+                          onChange={(e) => setPostProcessingOptions(prev => ({ ...prev, enableBackgroundMusic: e.target.checked }))}
+                        />
+                        <strong>Background Music</strong>
+                      </label>
+                      <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                        Add ambient music for enhanced atmosphere
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {postProcessingOptions.enableBackgroundMusic && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <label><strong>Music Style:</strong></label>
+                      <select
+                        value={postProcessingOptions.backgroundMusicStyle}
+                        onChange={(e) => setPostProcessingOptions(prev => ({ ...prev, backgroundMusicStyle: e.target.value }))}
+                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
+                      >
+                        <option value="ambient">Ambient</option>
+                        <option value="energetic">Energetic</option>
+                        <option value="melodic">Melodic</option>
+                        <option value="professional">Professional</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+                
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                   <button 
                     onClick={testVoicePreview}
@@ -1166,6 +1405,49 @@ const VideoProcessor: React.FC = () => {
                     {isGeneratingSpeech ? '🎤 Generating...' : '🎤 Generate Speech'}
                   </button>
                 </div>
+                
+                {/* Progress Indicator */}
+                {isGeneratingSpeech && speechProgress && (
+                  <div style={{ 
+                    marginTop: '1rem', 
+                    padding: '1rem', 
+                    backgroundColor: voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? '#d4edda' : '#e3f2fd', 
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    border: voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? '2px solid #28a745' : '1px solid #2196f3'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <div style={{
+                        width: '20px',
+                        height: '20px',
+                        border: voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? '2px solid #28a745' : '2px solid #2196f3',
+                        borderTop: voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? '2px solid #28a745' : '2px solid #2196f3',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      <span style={{ 
+                        fontWeight: 'bold', 
+                        color: voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? '#155724' : '#1976d2'
+                      }}>
+                        {voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? '🚀 ULTRA FAST MODE' : speechProgress}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: '#666', margin: 0 }}>
+                      {voiceOptions.customConfig.fastMode && (rewritingResult?.rewritten_content?.text?.length || 0) > 2000 ? 
+                        'Ultra Fast Mode: Generating real audio for long content (first 1,000 chars)' : 
+                        voiceOptions.customConfig.fastMode ? 
+                          'Fast Mode: Skipping audio post-processing for quicker results' : 
+                          'Processing audio with full enhancement pipeline'
+                      }
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1221,28 +1503,115 @@ const VideoProcessor: React.FC = () => {
                 {/* Audio Player */}
                 <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
                   <h5>🎵 Listen to Generated Speech:</h5>
-                  <audio 
-                    controls 
-                    style={{ width: '100%', marginTop: '0.5rem' }}
-                    src={`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`}
-                  >
-                    Your browser does not support the audio element.
-                  </audio>
                   
-                  {/* Download Button */}
-                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                  {/* Check if this is a placeholder file from ultra fast mode */}
+                  {speechResult?.speech_output?.post_processing?.ultra_fast ? (
+                    <div style={{ 
+                      marginBottom: '1rem', 
+                      padding: '1rem', 
+                      backgroundColor: '#d4edda', 
+                      borderRadius: '4px',
+                      border: '1px solid #c3e6cb',
+                      textAlign: 'center'
+                    }}>
+                      <h6 style={{ margin: '0 0 0.5rem 0', color: '#155724' }}>🚀 Ultra Fast Mode - Real Audio Generated!</h6>
+                      <p style={{ fontSize: '0.9rem', margin: '0 0 0.5rem 0', color: '#155724' }}>
+                        <strong>Success!</strong> Your long content was processed using ultra fast mode.
+                      </p>
+                      <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem 0', color: '#155724' }}>
+                        <strong>Audio:</strong> Real MP3 file generated for the first 1,000 characters
+                      </p>
+                      <p style={{ fontSize: '0.8rem', margin: '0', color: '#155724' }}>
+                        <strong>File:</strong> {speechResult.speech_output?.audio_file_path?.split('/')?.pop() || 'N/A'}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Audio Test Section */}
+                      <div style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
+                        <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>
+                          <strong>Debug Info:</strong> Audio files are being served from backend. If you can't hear anything, check the browser console for errors.
+                        </p>
+                        <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>
+                          <strong>File Path:</strong> {speechResult.speech_output?.audio_file_path || 'N/A'}
+                        </p>
+                        <p style={{ fontSize: '0.8rem', margin: '0' }}>
+                          <strong>Direct URL:</strong> {`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`}
+                        </p>
+                        
+                        {/* Test Audio Button */}
+                        <button 
+                          onClick={() => {
+                            const testAudio = new Audio(`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`);
+                            testAudio.play().catch(e => {
+                              console.error('Test audio failed:', e);
+                              alert('Audio test failed. Check console for details.');
+                            });
+                          }}
+                          style={{ 
+                            padding: '0.25rem 0.5rem', 
+                            fontSize: '0.8rem', 
+                            backgroundColor: '#007bff', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🔊 Test Audio Playback
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Main Audio Player */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <h6 style={{ margin: '0 0 0.5rem 0' }}>🎵 Audio Player:</h6>
+                    <audio 
+                      controls 
+                      style={{ width: '100%', marginTop: '0.5rem' }}
+                      src={`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`}
+                      onError={(e) => {
+                        console.error('Audio playback error:', e);
+                        console.error('Audio element error details:', e.target);
+                      }}
+                      onLoadStart={() => console.log('Audio loading started')}
+                      onCanPlay={() => console.log('Audio can play')}
+                      onPlay={() => console.log('Audio playing')}
+                      onPause={() => console.log('Audio paused')}
+                      onLoadedData={() => console.log('Audio data loaded')}
+                      onProgress={() => console.log('Audio loading progress')}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                  </div>
+                  
+                  {/* Download Buttons */}
+                  <div style={{ marginTop: '1rem', textAlign: 'center', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                    {/* Download Final Audio */}
                     <a 
                       href={`${API_BASE_URL}/play-audio/${speechResult.speech_output?.audio_file_path?.split('/')?.pop() || ''}`}
                       download={speechResult.speech_output?.audio_file_path?.split('/')?.pop() || 'generated_speech.mp3'}
                       className="btn btn-secondary"
                       style={{ display: 'inline-block', textDecoration: 'none' }}
                     >
-                      💾 Download Audio File
+                      {speechResult?.speech_output?.post_processing?.ultra_fast ? 
+                        '💾 Download Ultra Fast Audio' : 
+                        '💾 Download Generated Audio'
+                      }
                     </a>
                   </div>
                   
                   <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-                    🔊 Click play to hear your generated speech with the selected voice settings
+                    {speechResult?.speech_output?.post_processing?.ultra_fast ? (
+                      <>
+                        <strong>Note:</strong> This audio was generated using ultra fast mode for your long content. For full content, consider breaking it into smaller sections.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Note:</strong> Your audio has been generated successfully! You can play it above or download it below.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
